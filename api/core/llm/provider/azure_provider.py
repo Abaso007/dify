@@ -10,10 +10,7 @@ from models.provider import ProviderName
 class AzureProvider(BaseProvider):
     def get_models(self, model_id: Optional[str] = None) -> list[dict]:
         credentials = self.get_credentials(model_id)
-        url = "{}/openai/deployments?api-version={}".format(
-            credentials.get('openai_api_base'),
-            credentials.get('openai_api_version')
-        )
+        url = f"{credentials.get('openai_api_base')}/openai/deployments?api-version={credentials.get('openai_api_version')}"
 
         headers = {
             "api-key": credentials.get('openai_api_key'),
@@ -22,15 +19,20 @@ class AzureProvider(BaseProvider):
 
         response = requests.get(url, headers=headers)
 
-        if response.status_code == 200:
-            result = response.json()
-            return [{
-                'id': deployment['id'],
-                'name': '{} ({})'.format(deployment['id'], deployment['model'])
-            } for deployment in result['data'] if deployment['status'] == 'succeeded']
-        else:
+        if response.status_code != 200:
             # TODO: optimize in future
-            raise Exception('Failed to get deployments from Azure OpenAI. Status code: {}'.format(response.status_code))
+            raise Exception(
+                f'Failed to get deployments from Azure OpenAI. Status code: {response.status_code}'
+            )
+        result = response.json()
+        return [
+            {
+                'id': deployment['id'],
+                'name': f"{deployment['id']} ({deployment['model']})",
+            }
+            for deployment in result['data']
+            if deployment['status'] == 'succeeded'
+        ]
 
     def get_credentials(self, model_id: Optional[str] = None) -> dict:
         """

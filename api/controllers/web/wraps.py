@@ -31,9 +31,7 @@ def validate_token(view=None):
             return view(app_model, end_user, *args, **kwargs)
         return decorated
 
-    if view:
-        return decorator(view)
-    return decorator
+    return decorator(view) if view else decorator
 
 
 def validate_and_get_site():
@@ -50,15 +48,14 @@ def validate_and_get_site():
     if auth_scheme != 'bearer':
         raise Unauthorized()
 
-    site = db.session.query(Site).filter(
-        Site.code == auth_token,
-        Site.status == 'normal'
-    ).first()
-
-    if not site:
+    if (
+        site := db.session.query(Site)
+        .filter(Site.code == auth_token, Site.status == 'normal')
+        .first()
+    ):
+        return site
+    else:
         raise NotFound()
-
-    return site
 
 
 def create_or_update_end_user_for_session(app_model):

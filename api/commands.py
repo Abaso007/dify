@@ -26,13 +26,17 @@ def reset_password(email, new_password, password_confirm):
         filter(Account.email == email). \
         one_or_none()
     if not account:
-        click.echo(click.style('sorry. the account: [{}] not exist .'.format(email), fg='red'))
+        click.echo(click.style(f'sorry. the account: [{email}] not exist .', fg='red'))
         return
     try:
         valid_password(new_password)
     except:
         click.echo(
-            click.style('sorry. The passwords must match {} '.format(password_pattern), fg='red'))
+            click.style(
+                f'sorry. The passwords must match {password_pattern} ',
+                fg='red',
+            )
+        )
         return
 
     # generate password salt
@@ -60,13 +64,12 @@ def reset_email(email, new_email, email_confirm):
         filter(Account.email == email). \
         one_or_none()
     if not account:
-        click.echo(click.style('sorry. the account: [{}] not exist .'.format(email), fg='red'))
+        click.echo(click.style(f'sorry. the account: [{email}] not exist .', fg='red'))
         return
     try:
         email_validate(new_email)
     except:
-        click.echo(
-            click.style('sorry. {} is not a valid email. '.format(email), fg='red'))
+        click.echo(click.style(f'sorry. {email} is not a valid email. ', fg='red'))
         return
 
     account.email = new_email
@@ -88,10 +91,10 @@ def generate_invitation_codes(batch, count):
 
     count = int(count)
 
-    click.echo('Start generate {} invitation codes for batch {}.'.format(count, batch))
+    click.echo(f'Start generate {count} invitation codes for batch {batch}.')
 
     codes = ''
-    for i in range(count):
+    for _ in range(count):
         code = generate_invitation_code()
         invitation_code = InvitationCode(
             code=code,
@@ -103,15 +106,17 @@ def generate_invitation_codes(batch, count):
         codes += code + "\n"
     db.session.commit()
 
-    filename = 'storage/invitation-codes-{}.txt'.format(batch)
+    filename = f'storage/invitation-codes-{batch}.txt'
 
     with open(filename, 'w') as f:
         f.write(codes)
 
-    click.echo(click.style(
-        'Congratulations! Generated {} invitation codes for batch {} and saved to the file \'{}\''.format(count, batch,
-                                                                                                          filename),
-        fg='green'))
+    click.echo(
+        click.style(
+            f"Congratulations! Generated {count} invitation codes for batch {batch} and saved to the file \'{filename}\'",
+            fg='green',
+        )
+    )
 
 
 def generate_invitation_code():
@@ -124,11 +129,7 @@ def generate_invitation_code():
 
 def generate_upper_string():
     letters_digits = string.ascii_uppercase + string.digits
-    result = ""
-    for i in range(8):
-        result += random.choice(letters_digits)
-
-    return result
+    return "".join(random.choice(letters_digits) for _ in range(8))
 
 
 @click.command('gen-recommended-apps', help='Number of records to generate')
@@ -139,14 +140,14 @@ def generate_recommended_apps():
         recommended_app = RecommendedApp(
             app_id=app.id,
             description={
-                'en': 'Description for ' + app.name,
-                'zh': '描述 ' + app.name
+                'en': f'Description for {app.name}',
+                'zh': f'描述 {app.name}',
             },
-            copyright='Copyright ' + str(random.randint(1990, 2020)),
+            copyright=f'Copyright {random.randint(1990, 2020)}',
             privacy_policy='https://privacypolicy.example.com',
             category=random.choice(['Games', 'News', 'Music', 'Sports']),
             position=random.randint(1, 100),
-            install_count=random.randint(100, 100000)
+            install_count=random.randint(100, 100000),
         )
         db.session.add(recommended_app)
     db.session.commit()

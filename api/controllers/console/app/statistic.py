@@ -61,14 +61,10 @@ class DailyConversationStatistic(Resource):
         sql_query += ' GROUP BY date order by date'
         rs = db.session.execute(sql_query, arg_dict)
 
-        response_date = []
-
-        for i in rs:
-            response_date.append({
-                'date': str(i.date),
-                'conversation_count': i.conversation_count
-            })
-
+        response_date = [
+            {'date': str(i.date), 'conversation_count': i.conversation_count}
+            for i in rs
+        ]
         return jsonify({
             'data': response_date
         })
@@ -121,14 +117,9 @@ class DailyTerminalsStatistic(Resource):
         sql_query += ' GROUP BY date order by date'
         rs = db.session.execute(sql_query, arg_dict)
 
-        response_date = []
-
-        for i in rs:
-            response_date.append({
-                'date': str(i.date),
-                'terminal_count': i.terminal_count
-            })
-
+        response_date = [
+            {'date': str(i.date), 'terminal_count': i.terminal_count} for i in rs
+        ]
         return jsonify({
             'data': response_date
         })
@@ -182,16 +173,15 @@ class DailyTokenCostStatistic(Resource):
         sql_query += ' GROUP BY date order by date'
         rs = db.session.execute(sql_query, arg_dict)
 
-        response_date = []
-
-        for i in rs:
-            response_date.append({
+        response_date = [
+            {
                 'date': str(i.date),
                 'token_count': i.token_count,
                 'total_price': i.total_price,
-                'currency': 'USD'
-            })
-
+                'currency': 'USD',
+            }
+            for i in rs
+        ]
         return jsonify({
             'data': response_date
         })

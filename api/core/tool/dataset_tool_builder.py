@@ -61,7 +61,7 @@ class DatasetToolBuilder:
         # fulfill description when it is empty
         description = dataset.description
         if not description:
-            description = 'useful for when you want to answer queries about the ' + dataset.name
+            description = f'useful for when you want to answer queries about the {dataset.name}'
 
         index_tool_config = IndexToolConfig(
             index=index,

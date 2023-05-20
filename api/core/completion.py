@@ -64,10 +64,7 @@ class Completion:
             conversation_message_task=conversation_message_task
         )
 
-        chain_output = ''
-        if main_chain:
-            chain_output = main_chain.run(query)
-
+        chain_output = main_chain.run(query) if main_chain else ''
         # run the final llm
         try:
             cls.run_final_llm(
@@ -114,9 +111,7 @@ class Completion:
             mode=mode
         )
 
-        response = final_llm.generate([prompt])
-
-        return response
+        return final_llm.generate([prompt])
 
     @classmethod
     def get_main_llm_prompt(cls, mode: str, llm: BaseLanguageModel, pre_prompt: str, query: str, inputs: dict, chain_output: Optional[str],
@@ -233,8 +228,7 @@ If you don't know the answer, just say that you don't know, don't try to make up
             model=app_model_config.model_dict
         )
 
-        # use llm config from conversation
-        memory = ReadOnlyConversationTokenDBBufferSharedMemory(
+        return ReadOnlyConversationTokenDBBufferSharedMemory(
             conversation=conversation,
             llm=memory_llm,
             max_token_limit=kwargs.get("max_token_limit", 2048),
@@ -244,8 +238,6 @@ If you don't know the answer, just say that you don't know, don't try to make up
             output_key=kwargs.get("output_key", "output"),
             message_limit=kwargs.get("message_limit", 10),
         )
-
-        return memory
 
     @classmethod
     def validate_query_tokens(cls, tenant_id: str, app_model_config: AppModelConfig, query: str):
@@ -311,8 +303,8 @@ If you don't know the answer, just say that you don't know, don't try to make up
             user=user,
             inputs=message.inputs,
             query=message.query,
-            is_override=True if message.override_model_configs else False,
-            streaming=streaming
+            is_override=bool(message.override_model_configs),
+            streaming=streaming,
         )
 
         llm.callback_manager = cls.get_llm_callback_manager(llm, streaming, conversation_message_task)
