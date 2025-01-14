@@ -23,6 +23,7 @@
 - `text_embedding` 文本 Embedding 模型
 - `rerank` Rerank 模型
 - `speech2text` 语音转文字
+- `tts` 文字转语音
 - `moderation` 审查
 
 `Xinference`支持`LLM`和`Text Embedding`和Rerank，那么我们开始编写`xinference.yaml`。
@@ -126,7 +127,7 @@ provider_credential_schema:
   ```python
   def _invoke(self, model: str, credentials: dict,
               prompt_messages: list[PromptMessage], model_parameters: dict,
-              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[List[str]] = None,
+              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[list[str]] = None,
               stream: bool = True, user: Optional[str] = None) \
           -> Union[LLMResult, Generator]:
       """
@@ -204,7 +205,7 @@ provider_credential_schema:
   但是有的供应商根据不同的模型支持不同的参数，如供应商`OpenLLM`支持`top_k`，但是并不是这个供应商提供的所有模型都支持`top_k`，我们这里举例A模型支持`top_k`，B模型不支持`top_k`，那么我们需要在这里动态生成模型参数的Schema，如下所示：
   
     ```python
-    def get_customizable_model_schema(self, model: str, credentials: dict) -> AIModelEntity | None:
+    def get_customizable_model_schema(self, model: str, credentials: dict) -> Optional[AIModelEntity]:
         """
             used to define customizable model schema
         """

@@ -1,30 +1,37 @@
-from tests.integration_tests.model_runtime.__mock.openai_completion import MockCompletionsClass
-from tests.integration_tests.model_runtime.__mock.openai_chat import MockChatClass
-from tests.integration_tests.model_runtime.__mock.openai_remote import MockModelClass
-from tests.integration_tests.model_runtime.__mock.openai_moderation import MockModerationClass
-from tests.integration_tests.model_runtime.__mock.openai_speech2text import MockSpeech2TextClass
-from tests.integration_tests.model_runtime.__mock.openai_embeddings import MockEmbeddingsClass
-from openai.resources.completions import Completions
-from openai.resources.chat import Completions as ChatCompletions
-from openai.resources.models import Models
-from openai.resources.moderations import Moderations
-from openai.resources.audio.transcriptions import Transcriptions
-from openai.resources.embeddings import Embeddings
+import os
+from collections.abc import Callable
+from typing import Literal
+
+import pytest
 
 # import monkeypatch
 from _pytest.monkeypatch import MonkeyPatch
-from typing import Literal, Callable, List
+from openai.resources.audio.transcriptions import Transcriptions
+from openai.resources.chat import Completions as ChatCompletions
+from openai.resources.completions import Completions
+from openai.resources.embeddings import Embeddings
+from openai.resources.models import Models
+from openai.resources.moderations import Moderations
 
-import os
-import pytest
+from tests.integration_tests.model_runtime.__mock.openai_chat import MockChatClass
+from tests.integration_tests.model_runtime.__mock.openai_completion import MockCompletionsClass
+from tests.integration_tests.model_runtime.__mock.openai_embeddings import MockEmbeddingsClass
+from tests.integration_tests.model_runtime.__mock.openai_moderation import MockModerationClass
+from tests.integration_tests.model_runtime.__mock.openai_remote import MockModelClass
+from tests.integration_tests.model_runtime.__mock.openai_speech2text import MockSpeech2TextClass
 
-def mock_openai(monkeypatch: MonkeyPatch, methods: List[Literal["completion", "chat", "remote", "moderation", "speech2text", "text_embedding"]]) -> Callable[[], None]:
+
+def mock_openai(
+    monkeypatch: MonkeyPatch,
+    methods: list[Literal["completion", "chat", "remote", "moderation", "speech2text", "text_embedding"]],
+) -> Callable[[], None]:
     """
-        mock openai module
+    mock openai module
 
-        :param monkeypatch: pytest monkeypatch fixture
-        :return: unpatch function
+    :param monkeypatch: pytest monkeypatch fixture
+    :return: unpatch function
     """
+
     def unpatch() -> None:
         monkeypatch.undo()
 
@@ -49,14 +56,15 @@ def mock_openai(monkeypatch: MonkeyPatch, methods: List[Literal["completion", "c
     return unpatch
 
 
-MOCK = os.getenv('MOCK_SWITCH', 'false').lower() == 'true'
+MOCK = os.getenv("MOCK_SWITCH", "false").lower() == "true"
+
 
 @pytest.fixture
 def setup_openai_mock(request, monkeypatch):
-    methods = request.param if hasattr(request, 'param') else []
+    methods = request.param if hasattr(request, "param") else []
     if MOCK:
         unpatch = mock_openai(monkeypatch, methods=methods)
-    
+
     yield
 
     if MOCK:

@@ -1,5 +1,11 @@
-from core.model_runtime.errors.invoke import InvokeConnectionError, InvokeServerUnavailableError, InvokeRateLimitError, \
-    InvokeAuthorizationError, InvokeBadRequestError, InvokeError
+from core.model_runtime.errors.invoke import (
+    InvokeAuthorizationError,
+    InvokeBadRequestError,
+    InvokeConnectionError,
+    InvokeError,
+    InvokeRateLimitError,
+    InvokeServerUnavailableError,
+)
 
 
 class _CommonZhipuaiAI:
@@ -11,7 +17,7 @@ class _CommonZhipuaiAI:
         :return:
         """
         credentials_kwargs = {
-            "api_key": credentials['api_key'],
+            "api_key": credentials["api_key"] if "api_key" in credentials else credentials.get("zhipuai_api_key"),
         }
 
         return credentials_kwargs
@@ -31,5 +37,5 @@ class _CommonZhipuaiAI:
             InvokeServerUnavailableError: [],
             InvokeRateLimitError: [],
             InvokeAuthorizationError: [],
-            InvokeBadRequestError: []
+            InvokeBadRequestError: [],
         }

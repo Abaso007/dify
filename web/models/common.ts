@@ -1,3 +1,5 @@
+import type { I18nText } from '@/i18n/language'
+
 export type CommonResponse = {
   result: 'success' | 'fail'
 }
@@ -11,6 +13,10 @@ export type SetupStatusResponse = {
   setup_at?: Date
 }
 
+export type InitValidateStatusResponse = {
+  status: 'finished' | 'not_started'
+}
+
 export type UserProfileResponse = {
   id: string
   name: string
@@ -21,6 +27,7 @@ export type UserProfileResponse = {
   interface_theme?: string
   timezone?: string
   last_login_at?: string
+  last_active_at?: string
   last_login_ip?: string
   created_at?: string
 }
@@ -55,10 +62,10 @@ export type TenantInfoResponse = {
   trial_end_reason: null | 'trial_exceeded' | 'using_custom'
 }
 
-export type Member = Pick<UserProfileResponse, 'id' | 'name' | 'email' | 'last_login_at' | 'created_at'> & {
+export type Member = Pick<UserProfileResponse, 'id' | 'name' | 'email' | 'last_login_at' | 'last_active_at' | 'created_at'> & {
   avatar: string
   status: 'pending' | 'active' | 'banned' | 'closed'
-  role: 'owner' | 'admin' | 'normal'
+  role: 'owner' | 'admin' | 'editor' | 'normal' | 'dataset_operator'
 }
 
 export enum ProviderName {
@@ -119,7 +126,7 @@ export type IWorkspace = {
 }
 
 export type ICurrentWorkspace = Omit<IWorkspace, 'current'> & {
-  role: 'normal' | 'admin' | 'owner'
+  role: 'owner' | 'admin' | 'editor' | 'dataset_operator' | 'normal'
   providers: Provider[]
   in_trail: boolean
   trial_end_reason?: string
@@ -165,6 +172,32 @@ export type DataSourceNotion = {
   source_info: DataSourceNotionWorkspace
 }
 
+export enum DataSourceCategory {
+  website = 'website',
+}
+export enum DataSourceProvider {
+  fireCrawl = 'firecrawl',
+  jinaReader = 'jinareader',
+}
+
+export type FirecrawlConfig = {
+  api_key: string
+  base_url: string
+}
+
+export type DataSourceItem = {
+  id: string
+  category: DataSourceCategory
+  provider: DataSourceProvider
+  disabled: boolean
+  created_at: number
+  updated_at: number
+}
+
+export type DataSources = {
+  sources: DataSourceItem[]
+}
+
 export type GithubRepo = {
   stargazers_count: number
 }
@@ -178,9 +211,12 @@ export type PluginProvider = {
 }
 
 export type FileUploadConfigResponse = {
-  file_size_limit: number
   batch_count_limit: number
-  image_file_size_limit?: number | string
+  image_file_size_limit?: number | string // default is 10MB
+  file_size_limit: number // default is 15MB
+  audio_file_size_limit?: number // default is 50MB
+  video_file_size_limit?: number // default is 100MB
+  workflow_file_upload_limit?: number // default is 10
 }
 
 export type InvitationResult = {
@@ -204,11 +240,6 @@ export type ApiBasedExtension = {
   api_key?: string
 }
 
-export type I18nText = {
-  'en-US': string
-  'zh-Hans': string
-}
-
 export type CodeBasedExtensionForm = {
   type: string
   label: I18nText
@@ -222,7 +253,7 @@ export type CodeBasedExtensionForm = {
 
 export type CodeBasedExtensionItem = {
   name: string
-  label: I18nText
+  label: any
   form_schema: CodeBasedExtensionForm[]
 }
 export type CodeBasedExtension = {

@@ -1,4 +1,4 @@
-import { createContext } from 'use-context-selector'
+import { createContext, useContext } from 'use-context-selector'
 import { PromptMode } from '@/models/debug'
 import type {
   AnnotationReplyConfig,
@@ -16,23 +16,29 @@ import type {
   PromptItem,
   SpeechToTextConfig,
   SuggestedQuestionsAfterAnswerConfig,
+  TextToSpeechConfig,
 } from '@/models/debug'
 import type { ExternalDataTool } from '@/models/common'
 import type { DataSet } from '@/models/datasets'
 import type { VisionSettings } from '@/types/app'
 import { ModelModeType, RETRIEVE_TYPE, Resolution, TransferMethod } from '@/types/app'
-import { ANNOTATION_DEFAULT, DEFAULT_CHAT_PROMPT_CONFIG, DEFAULT_COMPLETION_PROMPT_CONFIG } from '@/config'
+import { ANNOTATION_DEFAULT, DEFAULT_AGENT_SETTING, DEFAULT_CHAT_PROMPT_CONFIG, DEFAULT_COMPLETION_PROMPT_CONFIG } from '@/config'
 import type { FormValue } from '@/app/components/header/account-setting/model-provider-page/declarations'
+import type { Collection } from '@/app/components/tools/types'
 
 type IDebugConfiguration = {
   appId: string
-  hasSetAPIKEY: boolean
+  isAPIKeySet: boolean
   isTrailFinished: boolean
   mode: string
   modelModeType: ModelModeType
   promptMode: PromptMode
   setPromptMode: (promptMode: PromptMode) => void
   isAdvancedMode: boolean
+  isAgent: boolean
+  isFunctionCall: boolean
+  isOpenAI: boolean
+  collectionList: Collection[]
   canReturnToSimpleMode: boolean
   setCanReturnToSimpleMode: (canReturnToSimpleMode: boolean) => void
   chatPromptConfig: ChatPromptConfig
@@ -47,6 +53,8 @@ type IDebugConfiguration = {
   setConversationId: (conversationId: string | null) => void
   introduction: string
   setIntroduction: (introduction: string) => void
+  suggestedQuestions: string[]
+  setSuggestedQuestions: (questions: string[]) => void
   controlClearChatMessage: number
   setControlClearChatMessage: (controlClearChatMessage: number) => void
   prevPromptConfig: PromptConfig
@@ -57,6 +65,8 @@ type IDebugConfiguration = {
   setSuggestedQuestionsAfterAnswerConfig: (suggestedQuestionsAfterAnswerConfig: SuggestedQuestionsAfterAnswerConfig) => void
   speechToTextConfig: SpeechToTextConfig
   setSpeechToTextConfig: (speechToTextConfig: SpeechToTextConfig) => void
+  textToSpeechConfig: TextToSpeechConfig
+  setTextToSpeechConfig: (textToSpeechConfig: TextToSpeechConfig) => void
   citationConfig: CitationConfig
   setCitationConfig: (citationConfig: CitationConfig) => void
   annotationConfig: AnnotationReplyConfig
@@ -86,18 +96,26 @@ type IDebugConfiguration = {
   hasSetContextVar: boolean
   isShowVisionConfig: boolean
   visionConfig: VisionSettings
-  setVisionConfig: (visionConfig: VisionSettings) => void
+  setVisionConfig: (visionConfig: VisionSettings, noNotice?: boolean) => void
+  isAllowVideoUpload: boolean
+  isShowDocumentConfig: boolean
+  rerankSettingModalOpen: boolean
+  setRerankSettingModalOpen: (rerankSettingModalOpen: boolean) => void
 }
 
 const DebugConfigurationContext = createContext<IDebugConfiguration>({
   appId: '',
-  hasSetAPIKEY: false,
+  isAPIKeySet: false,
   isTrailFinished: false,
   mode: '',
   modelModeType: ModelModeType.chat,
   promptMode: PromptMode.simple,
   setPromptMode: () => { },
   isAdvancedMode: false,
+  isAgent: false,
+  isFunctionCall: false,
+  isOpenAI: false,
+  collectionList: [],
   canReturnToSimpleMode: false,
   setCanReturnToSimpleMode: () => { },
   chatPromptConfig: DEFAULT_CHAT_PROMPT_CONFIG,
@@ -119,6 +137,8 @@ const DebugConfigurationContext = createContext<IDebugConfiguration>({
   setConversationId: () => { },
   introduction: '',
   setIntroduction: () => { },
+  suggestedQuestions: [],
+  setSuggestedQuestions: () => { },
   controlClearChatMessage: 0,
   setControlClearChatMessage: () => { },
   prevPromptConfig: {
@@ -138,6 +158,12 @@ const DebugConfigurationContext = createContext<IDebugConfiguration>({
     enabled: false,
   },
   setSpeechToTextConfig: () => { },
+  textToSpeechConfig: {
+    enabled: false,
+    voice: '',
+    language: '',
+  },
+  setTextToSpeechConfig: () => { },
   citationConfig: {
     enabled: false,
   },
@@ -180,20 +206,25 @@ const DebugConfigurationContext = createContext<IDebugConfiguration>({
       prompt_template: '',
       prompt_variables: [],
     },
-    opening_statement: null,
     more_like_this: null,
-    suggested_questions_after_answer: null,
-    speech_to_text: null,
-    retriever_resource: null,
+    opening_statement: '',
+    suggested_questions: [],
     sensitive_word_avoidance: null,
+    speech_to_text: null,
+    text_to_speech: null,
+    file_upload: null,
+    suggested_questions_after_answer: null,
+    retriever_resource: null,
+    annotation_reply: null,
     dataSets: [],
+    agentConfig: DEFAULT_AGENT_SETTING,
   },
   setModelConfig: () => { },
   dataSets: [],
   showSelectDataSet: () => { },
   setDataSets: () => { },
   datasetConfigs: {
-    retrieval_model: RETRIEVE_TYPE.oneWay,
+    retrieval_model: RETRIEVE_TYPE.multiWay,
     reranking_model: {
       reranking_provider_name: '',
       reranking_model_name: '',
@@ -201,6 +232,9 @@ const DebugConfigurationContext = createContext<IDebugConfiguration>({
     top_k: 2,
     score_threshold_enabled: false,
     score_threshold: 0.7,
+    datasets: {
+      datasets: [],
+    },
   },
   setDatasetConfigs: () => { },
   hasSetContextVar: false,
@@ -212,6 +246,12 @@ const DebugConfigurationContext = createContext<IDebugConfiguration>({
     transfer_methods: [TransferMethod.remote_url],
   },
   setVisionConfig: () => { },
+  isAllowVideoUpload: false,
+  isShowDocumentConfig: false,
+  rerankSettingModalOpen: false,
+  setRerankSettingModalOpen: () => { },
 })
+
+export const useDebugConfigurationContext = () => useContext(DebugConfigurationContext)
 
 export default DebugConfigurationContext

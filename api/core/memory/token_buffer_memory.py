@@ -1,11 +1,23 @@
-from core.file.message_file_parser import MessageFileParser
+from collections.abc import Sequence
+from typing import Optional
+
+from core.app.app_config.features.file_upload.manager import FileUploadConfigManager
+from core.file import file_manager
 from core.model_manager import ModelInstance
-from core.model_runtime.entities.message_entities import PromptMessage, TextPromptMessageContent, UserPromptMessage, \
-    AssistantPromptMessage, PromptMessageRole
-from core.model_runtime.entities.model_entities import ModelType
-from core.model_runtime.model_providers import model_provider_factory
+from core.model_runtime.entities import (
+    AssistantPromptMessage,
+    ImagePromptMessageContent,
+    PromptMessage,
+    PromptMessageContent,
+    PromptMessageRole,
+    TextPromptMessageContent,
+    UserPromptMessage,
+)
+from core.prompt.utils.extract_thread_messages import extract_thread_messages
 from extensions.ext_database import db
-from models.model import Conversation, Message
+from factories import file_factory
+from models.model import AppMode, Conversation, Message, MessageFile
+from models.workflow import WorkflowRun
 
 
 class TokenBufferMemory:
@@ -13,8 +25,9 @@ class TokenBufferMemory:
         self.conversation = conversation
         self.model_instance = model_instance
 
-    def get_history_prompt_messages(self, max_token_limit: int = 2000,
-                                    message_limit: int = 10) -> list[PromptMessage]:
+    def get_history_prompt_messages(
+        self, max_token_limit: int = 2000, message_limit: Optional[int] = None
+    ) -> Sequence[PromptMessage]:
         """
         Get history prompt messages.
         :param max_token_limit: max token limit
@@ -23,30 +36,80 @@ class TokenBufferMemory:
         app_record = self.conversation.app
 
         # fetch limited messages, and return reversed
-        messages = db.session.query(Message).filter(
-            Message.conversation_id == self.conversation.id,
-            Message.answer != ''
-        ).order_by(Message.created_at.desc()).limit(message_limit).all()
-
-        messages = list(reversed(messages))
-        message_file_parser = MessageFileParser(
-            tenant_id=app_record.tenant_id,
-            app_id=app_record.id
+        query = (
+            db.session.query(
+                Message.id,
+                Message.query,
+                Message.answer,
+                Message.created_at,
+                Message.workflow_run_id,
+                Message.parent_message_id,
+            )
+            .filter(
+                Message.conversation_id == self.conversation.id,
+            )
+            .order_by(Message.created_at.desc())
         )
 
-        prompt_messages = []
+        if message_limit and message_limit > 0:
+            message_limit = min(message_limit, 500)
+        else:
+            message_limit = 500
+
+        messages = query.limit(message_limit).all()
+
+        # instead of all messages from the conversation, we only need to extract messages
+        # that belong to the thread of last message
+        thread_messages = extract_thread_messages(messages)
+
+        # for newly created message, its answer is temporarily empty, we don't need to add it to memory
+        if thread_messages and not thread_messages[0].answer:
+            thread_messages.pop(0)
+
+        messages = list(reversed(thread_messages))
+
+        prompt_messages: list[PromptMessage] = []
         for message in messages:
-            files = message.message_files
+            files = db.session.query(MessageFile).filter(MessageFile.message_id == message.id).all()
             if files:
-                file_objs = message_file_parser.transform_message_files(
-                    files, message.app_model_config
-                )
+                file_extra_config = None
+                if self.conversation.mode not in {AppMode.ADVANCED_CHAT, AppMode.WORKFLOW}:
+                    file_extra_config = FileUploadConfigManager.convert(self.conversation.model_config)
+                else:
+                    if message.workflow_run_id:
+                        workflow_run = (
+                            db.session.query(WorkflowRun).filter(WorkflowRun.id == message.workflow_run_id).first()
+                        )
 
-                prompt_message_contents = [TextPromptMessageContent(data=message.query)]
-                for file_obj in file_objs:
-                    prompt_message_contents.append(file_obj.prompt_message_content)
+                        if workflow_run and workflow_run.workflow:
+                            file_extra_config = FileUploadConfigManager.convert(
+                                workflow_run.workflow.features_dict, is_vision=False
+                            )
 
-                prompt_messages.append(UserPromptMessage(content=prompt_message_contents))
+                detail = ImagePromptMessageContent.DETAIL.LOW
+                if file_extra_config and app_record:
+                    file_objs = file_factory.build_from_message_files(
+                        message_files=files, tenant_id=app_record.tenant_id, config=file_extra_config
+                    )
+                    if file_extra_config.image_config and file_extra_config.image_config.detail:
+                        detail = file_extra_config.image_config.detail
+                else:
+                    file_objs = []
+
+                if not file_objs:
+                    prompt_messages.append(UserPromptMessage(content=message.query))
+                else:
+                    prompt_message_contents: list[PromptMessageContent] = []
+                    prompt_message_contents.append(TextPromptMessageContent(data=message.query))
+                    for file in file_objs:
+                        prompt_message = file_manager.to_prompt_message_content(
+                            file,
+                            image_detail_config=detail,
+                        )
+                        prompt_message_contents.append(prompt_message)
+
+                    prompt_messages.append(UserPromptMessage(content=prompt_message_contents))
+
             else:
                 prompt_messages.append(UserPromptMessage(content=message.query))
 
@@ -56,31 +119,23 @@ class TokenBufferMemory:
             return []
 
         # prune the chat message if it exceeds the max token limit
-        provider_instance = model_provider_factory.get_provider_instance(self.model_instance.provider)
-        model_type_instance = provider_instance.get_model_instance(ModelType.LLM)
-
-        curr_message_tokens = model_type_instance.get_num_tokens(
-            self.model_instance.model,
-            self.model_instance.credentials,
-            prompt_messages
-        )
+        curr_message_tokens = self.model_instance.get_llm_num_tokens(prompt_messages)
 
         if curr_message_tokens > max_token_limit:
             pruned_memory = []
-            while curr_message_tokens > max_token_limit and prompt_messages:
+            while curr_message_tokens > max_token_limit and len(prompt_messages) > 1:
                 pruned_memory.append(prompt_messages.pop(0))
-                curr_message_tokens = model_type_instance.get_num_tokens(
-                    self.model_instance.model,
-                    self.model_instance.credentials,
-                    prompt_messages
-                )
+                curr_message_tokens = self.model_instance.get_llm_num_tokens(prompt_messages)
 
         return prompt_messages
 
-    def get_history_prompt_text(self, human_prefix: str = "Human",
-                                ai_prefix: str = "Assistant",
-                                max_token_limit: int = 2000,
-                                message_limit: int = 10) -> str:
+    def get_history_prompt_text(
+        self,
+        human_prefix: str = "Human",
+        ai_prefix: str = "Assistant",
+        max_token_limit: int = 2000,
+        message_limit: Optional[int] = None,
+    ) -> str:
         """
         Get history prompt text.
         :param human_prefix: human prefix
@@ -89,10 +144,7 @@ class TokenBufferMemory:
         :param message_limit: message limit
         :return:
         """
-        prompt_messages = self.get_history_prompt_messages(
-            max_token_limit=max_token_limit,
-            message_limit=message_limit
-        )
+        prompt_messages = self.get_history_prompt_messages(max_token_limit=max_token_limit, message_limit=message_limit)
 
         string_messages = []
         for m in prompt_messages:
@@ -103,7 +155,17 @@ class TokenBufferMemory:
             else:
                 continue
 
-            message = f"{role}: {m.content}"
-            string_messages.append(message)
+            if isinstance(m.content, list):
+                inner_msg = ""
+                for content in m.content:
+                    if isinstance(content, TextPromptMessageContent):
+                        inner_msg += f"{content.data}\n"
+                    elif isinstance(content, ImagePromptMessageContent):
+                        inner_msg += "[image]\n"
+
+                string_messages.append(f"{role}: {inner_msg.strip()}")
+            else:
+                message = f"{role}: {m.content}"
+                string_messages.append(message)
 
         return "\n".join(string_messages)

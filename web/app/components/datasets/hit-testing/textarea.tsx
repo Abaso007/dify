@@ -1,25 +1,30 @@
-import { useContext } from 'use-context-selector'
+import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import cn from 'classnames'
+import {
+  RiEqualizer2Line,
+} from '@remixicon/react'
+import Image from 'next/image'
 import Button from '../../base/button'
-import Tag from '../../base/tag'
-import Tooltip from '../../base/tooltip'
 import { getIcon } from '../common/retrieval-method-info'
-import s from './style.module.css'
-import DatasetDetailContext from '@/context/dataset-detail'
-import type { HitTestingResponse } from '@/models/datasets'
-import { hitTesting } from '@/service/datasets'
+import ModifyExternalRetrievalModal from './modify-external-retrieval-modal'
+import Tooltip from '@/app/components/base/tooltip'
+import cn from '@/utils/classnames'
+import type { ExternalKnowledgeBaseHitTestingResponse, HitTestingResponse } from '@/models/datasets'
+import { externalKnowledgeBaseHitTesting, hitTesting } from '@/service/datasets'
 import { asyncRunSafe } from '@/utils'
 import { RETRIEVE_METHOD, type RetrievalConfig } from '@/types/app'
+import promptS from '@/app/components/app/configuration/config-prompt/style.module.css'
 
 type TextAreaWithButtonIProps = {
   datasetId: string
   onUpdateList: () => void
   setHitResult: (res: HitTestingResponse) => void
+  setExternalHitResult: (res: ExternalKnowledgeBaseHitTestingResponse) => void
   loading: boolean
   setLoading: (v: boolean) => void
   text: string
   setText: (v: string) => void
+  isExternal?: boolean
   onClickRetrievalMethod: () => void
   retrievalConfig: RetrievalConfig
   isEconomy: boolean
@@ -30,17 +35,29 @@ const TextAreaWithButton = ({
   datasetId,
   onUpdateList,
   setHitResult,
+  setExternalHitResult,
   setLoading,
   loading,
   text,
   setText,
+  isExternal = false,
   onClickRetrievalMethod,
   retrievalConfig,
   isEconomy,
   onSubmit: _onSubmit,
 }: TextAreaWithButtonIProps) => {
   const { t } = useTranslation()
-  const { indexingTechnique } = useContext(DatasetDetailContext)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [externalRetrievalSettings, setExternalRetrievalSettings] = useState({
+    top_k: 2,
+    score_threshold: 0.5,
+    score_threshold_enabled: false,
+  })
+
+  const handleSaveExternalRetrievalSettings = (data: { top_k: number; score_threshold: number; score_threshold_enabled: boolean }) => {
+    setExternalRetrievalSettings(data)
+    setIsSettingsOpen(false)
+  }
 
   function handleTextChange(event: any) {
     setText(event.target.value)
@@ -49,7 +66,14 @@ const TextAreaWithButton = ({
   const onSubmit = async () => {
     setLoading(true)
     const [e, res] = await asyncRunSafe<HitTestingResponse>(
-      hitTesting({ datasetId, queryText: text, retrieval_model: retrievalConfig }) as Promise<HitTestingResponse>,
+      hitTesting({
+        datasetId,
+        queryText: text,
+        retrieval_model: {
+          ...retrievalConfig,
+          search_method: isEconomy ? RETRIEVE_METHOD.keywordSearch : retrievalConfig.search_method,
+        },
+      }) as Promise<HitTestingResponse>,
     )
     if (!e) {
       setHitResult(res)
@@ -59,83 +83,114 @@ const TextAreaWithButton = ({
     _onSubmit && _onSubmit()
   }
 
+  const externalRetrievalTestingOnSubmit = async () => {
+    const [e, res] = await asyncRunSafe<ExternalKnowledgeBaseHitTestingResponse>(
+      externalKnowledgeBaseHitTesting({
+        datasetId,
+        query: text,
+        external_retrieval_model: {
+          top_k: externalRetrievalSettings.top_k,
+          score_threshold: externalRetrievalSettings.score_threshold,
+          score_threshold_enabled: externalRetrievalSettings.score_threshold_enabled,
+        },
+      }) as Promise<ExternalKnowledgeBaseHitTestingResponse>,
+    )
+    if (!e) {
+      setExternalHitResult(res)
+      onUpdateList?.()
+    }
+    setLoading(false)
+  }
+
   const retrievalMethod = isEconomy ? RETRIEVE_METHOD.invertedIndex : retrievalConfig.search_method
-  const Icon = getIcon(retrievalMethod)
+  const icon = <Image className='size-3.5 text-util-colors-purple-purple-600' src={getIcon(retrievalMethod)} alt='' />
   return (
     <>
-      <div className={s.wrapper}>
-        <div className='pt-2 rounded-tl-xl rounded-tr-xl bg-[#EEF4FF]'>
-          <div className="px-4 pb-2 flex justify-between h-8 items-center">
-            <span className="text-gray-800 font-semibold text-sm">
+      <div className={cn('relative rounded-xl', promptS.gradientBorder)}>
+        <div className='relative pt-1.5 rounded-tl-xl rounded-tr-xl bg-background-section-burn'>
+          <div className="pl-4 pr-1.5 pb-1 flex justify-between h-8 items-center">
+            <span className="text-text-secondary font-semibold text-[13px] leading-4 uppercase">
               {t('datasetHitTesting.input.title')}
             </span>
-            <Tooltip
-              selector={'change-retrieval-method'}
-              htmlContent={t('dataset.retrieval.changeRetrievalMethod')}
-            >
-              <div
-                onClick={onClickRetrievalMethod}
-                className='flex px-2 h-7 items-center space-x-1 bg-white hover:bg-[#ECE9FE] rounded-md shadow-sm cursor-pointer text-[#6927DA]'
+            {isExternal
+              ? <Button
+                variant='secondary'
+                size='small'
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
               >
-                <Icon className='w-3.5 h-3.5'></Icon>
-                <div className='text-xs font-medium'>{t(`dataset.retrieval.${retrievalMethod}.title`)}</div>
+                <RiEqualizer2Line className='text-components-button-secondary-text w-3.5 h-3.5' />
+                <div className='flex px-[3px] justify-center items-center gap-1'>
+                  <span className='text-components-button-secondary-text system-xs-medium'>{t('datasetHitTesting.settingTitle')}</span>
+                </div>
+              </Button>
+              : <div
+                onClick={onClickRetrievalMethod}
+                className='flex px-1.5 h-7 items-center bg-components-button-secondary-bg hover:bg-components-button-secondary-bg-hover rounded-lg border-[0.5px] border-components-button-secondary-bg shadow-xs backdrop-blur-[5px] cursor-pointer space-x-0.5'
+              >
+                {icon}
+                <div className='text-text-secondary text-xs font-medium uppercase'>{t(`dataset.retrieval.${retrievalMethod}.title`)}</div>
+                <RiEqualizer2Line className='size-4 text-components-menu-item-text'></RiEqualizer2Line>
               </div>
-            </Tooltip>
+            }
           </div>
-          <div className='h-2 rounded-tl-xl rounded-tr-xl bg-white'></div>
+          {
+            isSettingsOpen && (
+              <ModifyExternalRetrievalModal
+                onClose={() => setIsSettingsOpen(false)}
+                onSave={handleSaveExternalRetrievalSettings}
+                initialTopK={externalRetrievalSettings.top_k}
+                initialScoreThreshold={externalRetrievalSettings.score_threshold}
+                initialScoreThresholdEnabled={externalRetrievalSettings.score_threshold_enabled}
+              />
+            )
+          }
+          <div className='h-2 rounded-tl-xl rounded-tr-xl bg-background-default'></div>
         </div>
-        <div className='px-4 pb-11'>
+        <div className='px-4 pb-11 bg-background-default rounded-b-xl'>
           <textarea
+            className='h-[220px] border-none resize-none font-normal caret-primary-600 text-text-secondary text-sm w-full focus-visible:outline-none  placeholder:text-gray-300 placeholder:text-sm placeholder:font-normal'
             value={text}
             onChange={handleTextChange}
             placeholder={t('datasetHitTesting.input.placeholder') as string}
-            className={s.textarea}
           />
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between mx-4 mt-2 mb-2">
             {text?.length > 200
               ? (
                 <Tooltip
-                  content={t('datasetHitTesting.input.countWarning') as string}
-                  selector="hit-testing-warning"
+                  popupContent={t('datasetHitTesting.input.countWarning')}
                 >
-                  <div>
-                    <Tag color="red" className="!text-red-600">
-                      {text?.length}
-                      <span className="text-red-300 mx-0.5">/</span>
-                  200
-                    </Tag>
+                  <div
+                    className={cn('flex items-center h-5 px-1 rounded-md bg-background-section-burn text-red-600 text-xs font-medium', !text?.length && 'opacity-50')}
+                  >
+                    {text?.length}
+                    <span className="text-red-300 mx-0.5">/</span>
+                    200
                   </div>
                 </Tooltip>
               )
               : (
-                <Tag
-                  color="gray"
-                  className={cn('!text-gray-500', text?.length ? '' : 'opacity-50')}
+                <div
+                  className={cn('flex items-center h-5 px-1 rounded-md bg-background-section-burn text-text-tertiary text-xs font-medium', !text?.length && 'opacity-50')}
                 >
                   {text?.length}
-                  <span className="text-gray-300 mx-0.5">/</span>
-              200
-                </Tag>
+                  <span className="text-divider-deep mx-0.5">/</span>
+                  200
+                </div>
               )}
-            <Tooltip
-              selector="hit-testing-submit"
-              disabled={indexingTechnique === 'high_quality'}
-              content={t('datasetHitTesting.input.indexWarning') as string}
-            >
-              <div>
-                <Button
-                  onClick={onSubmit}
-                  type="primary"
-                  loading={loading}
-                  disabled={indexingTechnique !== 'high_quality' ? true : (!text?.length || text?.length > 200)}
-                >
-                  {t('datasetHitTesting.input.testing')}
-                </Button>
-              </div>
-            </Tooltip>
+
+            <div>
+              <Button
+                onClick={isExternal ? externalRetrievalTestingOnSubmit : onSubmit}
+                variant="primary"
+                loading={loading}
+                disabled={(!text?.length || text?.length > 200)}
+                className='w-[88px]'
+              >
+                {t('datasetHitTesting.input.testing')}
+              </Button>
+            </div>
           </div>
         </div>
-
       </div>
     </>
   )

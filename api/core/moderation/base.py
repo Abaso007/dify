@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Optional
-from pydantic import BaseModel
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel
 
 from core.extension.extensible import Extensible, ExtensionModule
 
 
 class ModerationAction(Enum):
-    DIRECT_OUTPUT = 'direct_output'
-    OVERRIDED = 'overrided'
+    DIRECT_OUTPUT = "direct_output"
+    OVERRIDDEN = "overridden"
 
 
 class ModerationInputsResult(BaseModel):
@@ -30,6 +31,7 @@ class Moderation(Extensible, ABC):
     """
     The base class of moderation.
     """
+
     module: ExtensionModule = ExtensionModule.MODERATION
 
     def __init__(self, app_id: str, tenant_id: str, config: Optional[dict] = None) -> None:
@@ -74,7 +76,7 @@ class Moderation(Extensible, ABC):
         raise NotImplementedError
 
     @classmethod
-    def _validate_inputs_and_outputs_config(self, config: dict, is_preset_response_required: bool) -> None:
+    def _validate_inputs_and_outputs_config(cls, config: dict, is_preset_response_required: bool) -> None:
         # inputs_config
         inputs_config = config.get("inputs_config")
         if not isinstance(inputs_config, dict):
@@ -98,16 +100,16 @@ class Moderation(Extensible, ABC):
             if not inputs_config.get("preset_response"):
                 raise ValueError("inputs_config.preset_response is required")
 
-            if len(inputs_config.get("preset_response")) > 100:
+            if len(inputs_config.get("preset_response", 0)) > 100:
                 raise ValueError("inputs_config.preset_response must be less than 100 characters")
 
         if outputs_config_enabled:
             if not outputs_config.get("preset_response"):
                 raise ValueError("outputs_config.preset_response is required")
 
-            if len(outputs_config.get("preset_response")) > 100:
+            if len(outputs_config.get("preset_response", 0)) > 100:
                 raise ValueError("outputs_config.preset_response must be less than 100 characters")
 
 
-class ModerationException(Exception):
+class ModerationError(Exception):
     pass

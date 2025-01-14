@@ -48,3 +48,10 @@ package-lock.json
 
 # pmpm
 pnpm-lock.yaml
+
+.favorites.json
+*storybook.log
+
+# mise
+mise.toml
+

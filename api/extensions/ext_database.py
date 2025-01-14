@@ -1,7 +1,6 @@
-from flask_sqlalchemy import SQLAlchemy
+from dify_app import DifyApp
+from models import db
 
-db = SQLAlchemy()
 
-
-def init_app(app):
+def init_app(app: DifyApp):
     db.init_app(app)

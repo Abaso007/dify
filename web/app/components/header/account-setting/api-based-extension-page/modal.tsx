@@ -74,8 +74,7 @@ const ApiBasedExtensionModal: FC<ApiBasedExtensionModalProps> = ({
   return (
     <Modal
       isShow
-      onClose={() => {}}
-      wrapperClassName='!z-30'
+      onClose={() => { }}
       className='!p-8 !pb-6 !max-w-none !w-[640px]'
     >
       <div className='mb-2 text-xl font-semibold text-gray-900'>
@@ -101,7 +100,7 @@ const ApiBasedExtensionModal: FC<ApiBasedExtensionModalProps> = ({
           {t('common.apiBasedExtension.modal.apiEndpoint.title')}
           <a
             href={t('common.apiBasedExtension.linkUrl') || '/'}
-            target='_blank'
+            target='_blank' rel='noopener noreferrer'
             className='group flex items-center text-xs text-gray-500 font-normal hover:text-primary-600'
           >
             <BookOpen01 className='mr-1 w-3 h-3 text-gray-500 group-hover:text-primary-600' />
@@ -131,13 +130,12 @@ const ApiBasedExtensionModal: FC<ApiBasedExtensionModalProps> = ({
       <div className='flex items-center justify-end mt-6'>
         <Button
           onClick={onCancel}
-          className='mr-2 text-sm font-medium'
+          className='mr-2'
         >
           {t('common.operation.cancel')}
         </Button>
         <Button
-          type='primary'
-          className='text-sm font-medium'
+          variant='primary'
           disabled={!localeData.name || !localeData.api_endpoint || !localeData.api_key || loading}
           onClick={handleSave}
         >

@@ -2,13 +2,14 @@
 import type { FC } from 'react'
 import React, { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { RiCloseLine } from '@remixicon/react'
 import Toast from '../../base/toast'
-import { XClose } from '@/app/components/base/icons/src/vender/line/general'
+import { ModelTypeEnum } from '../../header/account-setting/model-provider-page/declarations'
 import type { RetrievalConfig } from '@/types/app'
 import RetrievalMethodConfig from '@/app/components/datasets/common/retrieval-method-config'
 import EconomicalRetrievalMethodConfig from '@/app/components/datasets/common/economical-retrieval-method-config'
 import Button from '@/app/components/base/button'
-import { ensureRerankModelSelected, isReRankModelSelected } from '@/app/components/datasets/common/check-rerank-model'
+import { isReRankModelSelected } from '@/app/components/datasets/common/check-rerank-model'
 import { useModelListAndDefaultModelAndCurrentProviderAndModel } from '@/app/components/header/account-setting/model-provider-page/hooks'
 
 type Props = {
@@ -37,15 +38,11 @@ const ModifyRetrievalModal: FC<Props> = ({
 
   const {
     modelList: rerankModelList,
-    defaultModel: rerankDefaultModel,
-    currentModel: isRerankDefaultModelVaild,
-  } = useModelListAndDefaultModelAndCurrentProviderAndModel(3)
+  } = useModelListAndDefaultModelAndCurrentProviderAndModel(ModelTypeEnum.rerank)
 
   const handleSave = () => {
     if (
       !isReRankModelSelected({
-        rerankDefaultModel,
-        isRerankDefaultModelVaild: !!isRerankDefaultModelVaild,
         rerankModelList,
         retrievalConfig,
         indexMethod,
@@ -54,11 +51,7 @@ const ModifyRetrievalModal: FC<Props> = ({
       Toast.notify({ type: 'error', message: t('appDebug.datasetConfig.rerankModelRequired') })
       return
     }
-    onSave(ensureRerankModelSelected({
-      rerankDefaultModel: rerankDefaultModel!,
-      retrievalConfig,
-      indexMethod,
-    }))
+    onSave(retrievalConfig)
   }
 
   if (!isShow)
@@ -76,7 +69,7 @@ const ModifyRetrievalModal: FC<Props> = ({
         <div className='text-base font-semibold text-gray-900'>
           <div>{t('datasetSettings.form.retrievalSetting.title')}</div>
           <div className='leading-[18px] text-xs font-normal text-gray-500'>
-            <a target='_blank' href='https://docs.dify.ai/advanced/retrieval-augment' className='text-[#155eef]'>{t('datasetSettings.form.retrievalSetting.learnMore')}</a>
+            <a target='_blank' rel='noopener noreferrer' href='https://docs.dify.ai/guides/knowledge-base/create-knowledge-and-upload-documents#id-4-retrieval-settings' className='text-text-accent'>{t('datasetSettings.form.retrievalSetting.learnMore')}</a>
             {t('datasetSettings.form.retrievalSetting.description')}
           </div>
         </div>
@@ -85,7 +78,7 @@ const ModifyRetrievalModal: FC<Props> = ({
             onClick={onHide}
             className='flex justify-center items-center w-6 h-6 cursor-pointer'
           >
-            <XClose className='w-4 h-4 text-gray-500' />
+            <RiCloseLine className='w-4 h-4 text-gray-500' />
           </div>
         </div>
       </div>
@@ -114,7 +107,7 @@ const ModifyRetrievalModal: FC<Props> = ({
         }}
       >
         <Button className='mr-2 flex-shrink-0' onClick={onHide}>{t('common.operation.cancel')}</Button>
-        <Button type='primary' className='flex-shrink-0' onClick={handleSave} >{t('common.operation.save')}</Button>
+        <Button variant='primary' className='flex-shrink-0' onClick={handleSave} >{t('common.operation.save')}</Button>
       </div>
     </div>
   )

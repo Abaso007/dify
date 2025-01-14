@@ -7,16 +7,16 @@ import {
 import useSWR, { useSWRConfig } from 'swr'
 import { useContext } from 'use-context-selector'
 import type {
-  CustomConfigrationModelFixedFields,
+  CustomConfigurationModelFixedFields,
   DefaultModel,
   DefaultModelResponse,
   Model,
-} from './declarations'
-import {
-  ConfigurateMethodEnum,
   ModelTypeEnum,
 } from './declarations'
-import { languageMaps } from './utils'
+import {
+  ConfigurationMethodEnum,
+  ModelStatusEnum,
+} from './declarations'
 import I18n from '@/context/i18n'
 import {
   fetchDefaultModal,
@@ -24,7 +24,6 @@ import {
   fetchModelProviderCredentials,
   fetchModelProviders,
   getPayUrl,
-  submitFreeQuota,
 } from '@/service/common'
 import { useProviderContext } from '@/context/provider-context'
 
@@ -59,58 +58,62 @@ export const useSystemDefaultModelAndModelList: UseDefaultModelAndModelList = (
 
 export const useLanguage = () => {
   const { locale } = useContext(I18n)
-
-  return languageMaps[locale]
+  return locale.replace('-', '_')
 }
 
-export const useProviderCrenditialsFormSchemasValue = (
+export const useProviderCredentialsAndLoadBalancing = (
   provider: string,
-  configurateMethod: ConfigurateMethodEnum,
+  configurationMethod: ConfigurationMethodEnum,
   configured?: boolean,
-  currentCustomConfigrationModelFixedFields?: CustomConfigrationModelFixedFields,
+  currentCustomConfigurationModelFixedFields?: CustomConfigurationModelFixedFields,
 ) => {
-  const { data: predefinedFormSchemasValue } = useSWR(
-    (configurateMethod === ConfigurateMethodEnum.predefinedModel && configured)
+  const { data: predefinedFormSchemasValue, mutate: mutatePredefined } = useSWR(
+    (configurationMethod === ConfigurationMethodEnum.predefinedModel && configured)
       ? `/workspaces/current/model-providers/${provider}/credentials`
       : null,
     fetchModelProviderCredentials,
   )
-  const { data: customFormSchemasValue } = useSWR(
-    (configurateMethod === ConfigurateMethodEnum.customizableModel && currentCustomConfigrationModelFixedFields)
-      ? `/workspaces/current/model-providers/${provider}/models/credentials?model=${currentCustomConfigrationModelFixedFields?.__model_name}&model_type=${currentCustomConfigrationModelFixedFields?.__model_type}`
+  const { data: customFormSchemasValue, mutate: mutateCustomized } = useSWR(
+    (configurationMethod === ConfigurationMethodEnum.customizableModel && currentCustomConfigurationModelFixedFields)
+      ? `/workspaces/current/model-providers/${provider}/models/credentials?model=${currentCustomConfigurationModelFixedFields?.__model_name}&model_type=${currentCustomConfigurationModelFixedFields?.__model_type}`
       : null,
     fetchModelProviderCredentials,
   )
 
-  const value = useMemo(() => {
-    return configurateMethod === ConfigurateMethodEnum.predefinedModel
+  const credentials = useMemo(() => {
+    return configurationMethod === ConfigurationMethodEnum.predefinedModel
       ? predefinedFormSchemasValue?.credentials
       : customFormSchemasValue?.credentials
         ? {
           ...customFormSchemasValue?.credentials,
-          ...currentCustomConfigrationModelFixedFields,
+          ...currentCustomConfigurationModelFixedFields,
         }
         : undefined
   }, [
-    configurateMethod,
-    currentCustomConfigrationModelFixedFields,
+    configurationMethod,
+    currentCustomConfigurationModelFixedFields,
     customFormSchemasValue?.credentials,
     predefinedFormSchemasValue?.credentials,
   ])
 
-  return value
+  const mutate = useMemo(() => () => {
+    mutatePredefined()
+    mutateCustomized()
+  }, [mutateCustomized, mutatePredefined])
+
+  return {
+    credentials,
+    loadBalancing: (configurationMethod === ConfigurationMethodEnum.predefinedModel
+      ? predefinedFormSchemasValue
+      : customFormSchemasValue
+    )?.load_balancing,
+    mutate,
+  }
+  // as ([Record<string, string | boolean | undefined> | undefined, ModelLoadBalancingConfig | undefined])
 }
 
-export type ModelTypeIndex = 1 | 2 | 3 | 4
-export const MODEL_TYPE_MAPS = {
-  1: ModelTypeEnum.textGeneration,
-  2: ModelTypeEnum.textEmbedding,
-  3: ModelTypeEnum.rerank,
-  4: ModelTypeEnum.speech2text,
-}
-
-export const useModelList = (type: ModelTypeIndex) => {
-  const { data, mutate, isLoading } = useSWR(`/workspaces/current/models/model-types/${MODEL_TYPE_MAPS[type]}`, fetchModelList)
+export const useModelList = (type: ModelTypeEnum) => {
+  const { data, mutate, isLoading } = useSWR(`/workspaces/current/models/model-types/${type}`, fetchModelList)
 
   return {
     data: data?.data || [],
@@ -119,8 +122,8 @@ export const useModelList = (type: ModelTypeIndex) => {
   }
 }
 
-export const useDefaultModel = (type: ModelTypeIndex) => {
-  const { data, mutate, isLoading } = useSWR(`/workspaces/current/default-model?model_type=${MODEL_TYPE_MAPS[type]}`, fetchDefaultModal)
+export const useDefaultModel = (type: ModelTypeEnum) => {
+  const { data, mutate, isLoading } = useSWR(`/workspaces/current/default-model?model_type=${type}`, fetchDefaultModal)
 
   return {
     data: data?.data,
@@ -141,6 +144,7 @@ export const useCurrentProviderAndModel = (modelList: Model[], defaultModel?: De
 
 export const useTextGenerationCurrentProviderAndModelAndModelList = (defaultModel?: DefaultModel) => {
   const { textGenerationModelList } = useProviderContext()
+  const activeTextGenerationModelList = textGenerationModelList.filter(model => model.status === ModelStatusEnum.active)
   const {
     currentProvider,
     currentModel,
@@ -150,24 +154,11 @@ export const useTextGenerationCurrentProviderAndModelAndModelList = (defaultMode
     currentProvider,
     currentModel,
     textGenerationModelList,
+    activeTextGenerationModelList,
   }
 }
 
-export const useAgentThoughtCurrentProviderAndModelAndModelList = (defaultModel?: DefaultModel) => {
-  const { agentThoughtModelList } = useProviderContext()
-  const {
-    currentProvider,
-    currentModel,
-  } = useCurrentProviderAndModel(agentThoughtModelList, defaultModel)
-
-  return {
-    currentProvider,
-    currentModel,
-    agentThoughtModelList,
-  }
-}
-
-export const useModelListAndDefaultModel = (type: ModelTypeIndex) => {
+export const useModelListAndDefaultModel = (type: ModelTypeEnum) => {
   const { data: modelList } = useModelList(type)
   const { data: defaultModel } = useDefaultModel(type)
 
@@ -177,7 +168,7 @@ export const useModelListAndDefaultModel = (type: ModelTypeIndex) => {
   }
 }
 
-export const useModelListAndDefaultModelAndCurrentProviderAndModel = (type: ModelTypeIndex) => {
+export const useModelListAndDefaultModelAndCurrentProviderAndModel = (type: ModelTypeEnum) => {
   const { modelList, defaultModel } = useModelListAndDefaultModel(type)
   const { currentProvider, currentModel } = useCurrentProviderAndModel(
     modelList,
@@ -195,9 +186,8 @@ export const useModelListAndDefaultModelAndCurrentProviderAndModel = (type: Mode
 export const useUpdateModelList = () => {
   const { mutate } = useSWRConfig()
 
-  const updateModelList = useCallback((type: ModelTypeIndex | ModelTypeEnum) => {
-    const modelType = typeof type === 'number' ? MODEL_TYPE_MAPS[type] : type
-    mutate(`/workspaces/current/models/model-types/${modelType}`)
+  const updateModelList = useCallback((type: ModelTypeEnum) => {
+    mutate(`/workspaces/current/models/model-types/${type}`)
   }, [mutate])
 
   return updateModelList
@@ -222,30 +212,6 @@ export const useAnthropicBuyQuota = () => {
   }
 
   return handleGetPayUrl
-}
-
-export const useFreeQuota = (onSuccess: () => void) => {
-  const [loading, setLoading] = useState(false)
-
-  const handleClick = async (type: string) => {
-    if (loading)
-      return
-
-    try {
-      setLoading(true)
-      const res = await submitFreeQuota(`/workspaces/current/model-providers/${type}/free-quota-submit`)
-
-      if (res.type === 'redirect' && res.redirect_url)
-        window.location.href = res.redirect_url
-      else if (res.type === 'submit' && res.result === 'success')
-        onSuccess()
-    }
-    finally {
-      setLoading(false)
-    }
-  }
-
-  return handleClick
 }
 
 export const useModelProviders = () => {

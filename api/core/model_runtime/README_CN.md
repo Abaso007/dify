@@ -13,13 +13,14 @@
   - `Text Embedidng Model` - 文本 Embedding ，预计算 tokens 能力
   - `Rerank Model` - 分段 Rerank 能力
   - `Speech-to-text Model` - 语音转文本能力
+  - `Text-to-speech Model` - 文本转语音能力
   - `Moderation` - Moderation 能力
 
 - 模型供应商展示
 
   ![image-20231210143654461](./docs/zh_Hans/images/index/image-20231210143654461.png)
 
-​	展示所有已支持的供应商列表，除了返回供应商名称、图标之外，还提供了支持的模型类型列表，预定义模型列表、配置方式以及配置凭据的表单规则等等，规则设计详见：[Schema](./schema.md)。
+​	展示所有已支持的供应商列表，除了返回供应商名称、图标之外，还提供了支持的模型类型列表，预定义模型列表、配置方式以及配置凭据的表单规则等等，规则设计详见：[Schema](./docs/zh_Hans/schema.md)。
 
 - 可选择的模型列表展示
 

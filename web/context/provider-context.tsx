@@ -1,15 +1,14 @@
 'use client'
 
-import { createContext, useContext } from 'use-context-selector'
+import { createContext, useContext, useContextSelector } from 'use-context-selector'
 import useSWR from 'swr'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   fetchModelList,
   fetchModelProviders,
   fetchSupportRetrievalMethods,
 } from '@/service/common'
 import {
-  ModelFeatureEnum,
   ModelStatusEnum,
   ModelTypeEnum,
 } from '@/app/components/header/account-setting/model-provider-page/declarations'
@@ -20,12 +19,11 @@ import { fetchCurrentPlanInfo } from '@/service/billing'
 import { parseCurrentPlan } from '@/app/components/billing/utils'
 import { defaultPlan } from '@/app/components/billing/config'
 
-const ProviderContext = createContext<{
+type ProviderContextState = {
   modelProviders: ModelProvider[]
   textGenerationModelList: Model[]
-  agentThoughtModelList: Model[]
   supportRetrievalMethods: RETRIEVE_METHOD[]
-  hasSettedApiKey: boolean
+  isAPIKeySet: boolean
   plan: {
     type: Plan
     usage: UsagePlanInfo
@@ -33,13 +31,16 @@ const ProviderContext = createContext<{
   }
   isFetchedPlan: boolean
   enableBilling: boolean
+  onPlanInfoChanged: () => void
   enableReplaceWebAppLogo: boolean
-}>({
+  modelLoadBalancingEnabled: boolean
+  datasetOperatorEnabled: boolean
+}
+const ProviderContext = createContext<ProviderContextState>({
   modelProviders: [],
   textGenerationModelList: [],
-  agentThoughtModelList: [],
   supportRetrievalMethods: [],
-  hasSettedApiKey: true,
+  isAPIKeySet: true,
   plan: {
     type: Plan.sandbox,
     usage: {
@@ -47,20 +48,31 @@ const ProviderContext = createContext<{
       buildApps: 12,
       teamMembers: 1,
       annotatedResponse: 1,
+      documentsUploadQuota: 50,
     },
     total: {
       vectorSpace: 200,
       buildApps: 50,
       teamMembers: 1,
       annotatedResponse: 10,
+      documentsUploadQuota: 500,
     },
   },
   isFetchedPlan: false,
   enableBilling: false,
+  onPlanInfoChanged: () => { },
   enableReplaceWebAppLogo: false,
+  modelLoadBalancingEnabled: false,
+  datasetOperatorEnabled: false,
 })
 
 export const useProviderContext = () => useContext(ProviderContext)
+
+// Adding a dangling comma to avoid the generic parsing issue in tsx, see:
+// https://github.com/microsoft/TypeScript/issues/15713
+// eslint-disable-next-line @typescript-eslint/comma-dangle
+export const useProviderContextSelector = <T,>(selector: (state: ProviderContextState) => T): T =>
+  useContextSelector(ProviderContext, selector)
 
 type ProviderContextProviderProps = {
   children: React.ReactNode
@@ -73,61 +85,44 @@ export const ProviderContextProvider = ({
   const { data: textGenerationModelList } = useSWR(`${fetchModelListUrlPrefix}${ModelTypeEnum.textGeneration}`, fetchModelList)
   const { data: supportRetrievalMethods } = useSWR('/datasets/retrieval-setting', fetchSupportRetrievalMethods)
 
-  const agentThoughtModelList = useMemo(() => {
-    const result: Model[] = []
-    if (textGenerationModelList?.data) {
-      textGenerationModelList?.data.forEach((item) => {
-        const agentThoughtModels = item.models.filter(model => model.features?.includes(ModelFeatureEnum.agentThought))
-
-        if (agentThoughtModels.length) {
-          result.push({
-            ...item,
-            models: agentThoughtModels,
-          })
-        }
-      })
-
-      return result
-    }
-
-    return []
-  }, [textGenerationModelList])
-
   const [plan, setPlan] = useState(defaultPlan)
   const [isFetchedPlan, setIsFetchedPlan] = useState(false)
   const [enableBilling, setEnableBilling] = useState(true)
   const [enableReplaceWebAppLogo, setEnableReplaceWebAppLogo] = useState(false)
+  const [modelLoadBalancingEnabled, setModelLoadBalancingEnabled] = useState(false)
+  const [datasetOperatorEnabled, setDatasetOperatorEnabled] = useState(false)
+
+  const fetchPlan = async () => {
+    const data = await fetchCurrentPlanInfo()
+    const enabled = data.billing.enabled
+    setEnableBilling(enabled)
+    setEnableReplaceWebAppLogo(data.can_replace_logo)
+    if (enabled) {
+      setPlan(parseCurrentPlan(data))
+      setIsFetchedPlan(true)
+    }
+    if (data.model_load_balancing_enabled)
+      setModelLoadBalancingEnabled(true)
+    if (data.dataset_operator_enabled)
+      setDatasetOperatorEnabled(true)
+  }
   useEffect(() => {
-    (async () => {
-      const data = await fetchCurrentPlanInfo()
-      const enabled = data.billing.enabled
-      setEnableBilling(enabled)
-      setEnableReplaceWebAppLogo(data.can_replace_logo)
-      if (enabled) {
-        setPlan(parseCurrentPlan(data))
-        // setPlan(parseCurrentPlan({
-        //   ...data,
-        //   annotation_quota_limit: {
-        //     ...data.annotation_quota_limit,
-        //     limit: 10,
-        //   },
-        // }))
-        setIsFetchedPlan(true)
-      }
-    })()
+    fetchPlan()
   }, [])
 
   return (
     <ProviderContext.Provider value={{
       modelProviders: providersData?.data || [],
       textGenerationModelList: textGenerationModelList?.data || [],
-      agentThoughtModelList,
-      hasSettedApiKey: !!textGenerationModelList?.data.some(model => model.status === ModelStatusEnum.active),
+      isAPIKeySet: !!textGenerationModelList?.data.some(model => model.status === ModelStatusEnum.active),
       supportRetrievalMethods: supportRetrievalMethods?.retrieval_method || [],
       plan,
       isFetchedPlan,
       enableBilling,
+      onPlanInfoChanged: fetchPlan,
       enableReplaceWebAppLogo,
+      modelLoadBalancingEnabled,
+      datasetOperatorEnabled,
     }}>
       {children}
     </ProviderContext.Provider>

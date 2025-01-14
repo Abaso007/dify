@@ -58,7 +58,7 @@ provider_credential_schema:  # Provider credential rules, as Anthropic only supp
       en_US: Enter your API URL
 ```
 
-You can also refer to the YAML configuration information under other provider directories in `model_providers`. The complete YAML rules are available at: [Schema](schema.md#Provider).
+You can also refer to the YAML configuration information under other provider directories in `model_providers`. The complete YAML rules are available at: [Schema](schema.md#provider).
 
 ### Implementing Provider Code
 
@@ -94,6 +94,7 @@ The currently supported model types are as follows:
 - `text_embedding` Text Embedding model
 - `rerank` Rerank model
 - `speech2text` Speech to text
+- `tts` Text to speech
 - `moderation` Moderation
 
 Continuing with `Anthropic` as an example, since `Anthropic` only supports LLM, we create a `module` named `llm` in `model_providers.anthropic`.
@@ -160,7 +161,7 @@ In `llm.py`, create an Anthropic LLM class, which we name `AnthropicLargeLanguag
   ```python
   def _invoke(self, model: str, credentials: dict,
               prompt_messages: list[PromptMessage], model_parameters: dict,
-              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[List[str]] = None,
+              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[list[str]] = None,
               stream: bool = True, user: Optional[str] = None) \
           -> Union[LLMResult, Generator]:
       """

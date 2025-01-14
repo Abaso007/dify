@@ -3,6 +3,7 @@ import { Dialog } from '@headlessui/react'
 import { useTranslation } from 'react-i18next'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 import Button from '../button'
+import cn from '@/utils/classnames'
 
 export type IDrawerProps = {
   title?: string
@@ -11,13 +12,14 @@ export type IDrawerProps = {
   children: React.ReactNode
   footer?: React.ReactNode
   mask?: boolean
+  positionCenter?: boolean
   isOpen: boolean
-  // closable: boolean
   showClose?: boolean
   clickOutsideNotOpen?: boolean
   onClose: () => void
   onCancel?: () => void
   onOk?: () => void
+  unmount?: boolean
 }
 
 export default function Drawer({
@@ -27,29 +29,29 @@ export default function Drawer({
   children,
   footer,
   mask = true,
+  positionCenter,
   showClose = false,
   isOpen,
   clickOutsideNotOpen,
   onClose,
   onCancel,
   onOk,
+  unmount = false,
 }: IDrawerProps) {
   const { t } = useTranslation()
   return (
     <Dialog
-      unmount={false}
+      unmount={unmount}
       open={isOpen}
       onClose={() => !clickOutsideNotOpen && onClose()}
       className="fixed z-30 inset-0 overflow-y-auto"
     >
-      <div className="flex w-screen h-screen justify-end">
+      <div className={cn('flex w-screen h-screen justify-end', positionCenter && '!justify-center')}>
         {/* mask */}
         <Dialog.Overlay
-          className={`z-40 fixed inset-0 ${!mask ? '' : 'bg-black bg-opacity-30'}`}
+          className={cn('z-40 fixed inset-0', mask && 'bg-black bg-opacity-30')}
         />
-        <div className={`z-50 flex flex-col justify-between bg-white w-full
-        max-w-sm p-6 overflow-hidden text-left align-middle
-        shadow-xl ${panelClassname}`}>
+        <div className={cn('relative z-50 flex flex-col justify-between bg-background-body w-full max-w-sm p-6 overflow-hidden text-left align-middle shadow-xl', panelClassname)}>
           <>
             {title && <Dialog.Title
               as="h3"

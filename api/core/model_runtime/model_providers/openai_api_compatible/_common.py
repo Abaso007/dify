@@ -1,16 +1,16 @@
-from decimal import Decimal
 import requests
 
-from core.model_runtime.entities.common_entities import I18nObject
-from core.model_runtime.entities.llm_entities import LLMMode
-from core.model_runtime.entities.model_entities import AIModelEntity, DefaultParameterName, \
-      FetchFrom, ModelPropertyKey, ModelType, ParameterRule, ParameterType, PriceConfig
+from core.model_runtime.errors.invoke import (
+    InvokeAuthorizationError,
+    InvokeBadRequestError,
+    InvokeConnectionError,
+    InvokeError,
+    InvokeRateLimitError,
+    InvokeServerUnavailableError,
+)
 
-from core.model_runtime.errors.invoke import InvokeConnectionError, InvokeServerUnavailableError, \
-      InvokeRateLimitError, InvokeAuthorizationError, InvokeBadRequestError, InvokeError
 
-
-class _CommonOAI_API_Compat:
+class _CommonOaiApiCompat:
     @property
     def _invoke_error_mapping(self) -> dict[type[InvokeError], list[type[Exception]]]:
         """
@@ -34,10 +34,10 @@ class _CommonOAI_API_Compat:
             ],
             InvokeServerUnavailableError: [
                 requests.exceptions.ConnectionError,  # Engine Overloaded
-                requests.exceptions.HTTPError  # Server Error
+                requests.exceptions.HTTPError,  # Server Error
             ],
             InvokeConnectionError: [
                 requests.exceptions.ConnectTimeout,  # Timeout
-                requests.exceptions.ReadTimeout  # Timeout
-            ]
+                requests.exceptions.ReadTimeout,  # Timeout
+            ],
         }

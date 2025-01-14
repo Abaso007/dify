@@ -5,8 +5,15 @@ import type {
   CreateDocumentReq,
   DataSet,
   DataSetListResponse,
-  DocumentDetailResponse,
   DocumentListResponse,
+  ErrorDocsResponse,
+  ExternalAPIDeleteResponse,
+  ExternalAPIItem,
+  ExternalAPIListResponse,
+  ExternalAPIUsage,
+  ExternalKnowledgeBaseHitTestingResponse,
+  ExternalKnowledgeItem,
+  FetchDatasetsParams,
   FileIndexingEstimateResponse,
   HitTestingRecordsResponse,
   HitTestingResponse,
@@ -16,15 +23,14 @@ import type {
   IndexingStatusResponse,
   ProcessRuleResponse,
   RelatedAppResponse,
-  SegmentDetailModel,
-  SegmentUpdator,
-  SegmentsQuery,
-  SegmentsResponse,
   createDocumentResponse,
 } from '@/models/datasets'
+import type { CreateKnowledgeBaseReq } from '@/app/components/datasets/external-knowledge-base/create/declarations'
+import type { CreateExternalAPIReq } from '@/app/components/datasets/external-api/declarations'
 import type { CommonResponse, DataSourceNotionWorkspace } from '@/models/common'
+import { DataSourceProvider } from '@/models/common'
 import type {
-  ApikeysListResponse,
+  ApiKeysListResponse,
   CreateApiKeyResponse,
 } from '@/models/app'
 import type { RetrievalConfig } from '@/types/app'
@@ -49,7 +55,12 @@ export const fetchDatasetDetail: Fetcher<DataSet, string> = (datasetId: string) 
   return get<DataSet>(`/datasets/${datasetId}`)
 }
 
-export const updateDatasetSetting: Fetcher<DataSet, { datasetId: string; body: Partial<Pick<DataSet, 'name' | 'description' | 'permission' | 'indexing_technique' | 'retrieval_model'>> }> = ({ datasetId, body }) => {
+export const updateDatasetSetting: Fetcher<DataSet, {
+  datasetId: string
+  body: Partial<Pick<DataSet,
+    'name' | 'description' | 'permission' | 'partial_member_list' | 'indexing_technique' | 'retrieval_model' | 'embedding_model' | 'embedding_model_provider'
+  >>
+}> = ({ datasetId, body }) => {
   return patch<DataSet>(`/datasets/${datasetId}`, { body })
 }
 
@@ -57,7 +68,7 @@ export const fetchDatasetRelatedApps: Fetcher<RelatedAppResponse, string> = (dat
   return get<RelatedAppResponse>(`/datasets/${datasetId}/related-apps`)
 }
 
-export const fetchDatasets: Fetcher<DataSetListResponse, { url: string; params: { page: number; ids?: string[]; limit?: number } }> = ({ url, params }) => {
+export const fetchDatasets: Fetcher<DataSetListResponse, FetchDatasetsParams> = ({ url, params }) => {
   const urlParams = qs.stringify(params, { indices: false })
   return get<DataSetListResponse>(`${url}?${urlParams}`)
 }
@@ -66,8 +77,42 @@ export const createEmptyDataset: Fetcher<DataSet, { name: string }> = ({ name })
   return post<DataSet>('/datasets', { body: { name } })
 }
 
+export const checkIsUsedInApp: Fetcher<{ is_using: boolean }, string> = (id) => {
+  return get<{ is_using: boolean }>(`/datasets/${id}/use-check`, {}, {
+    silent: true,
+  })
+}
+
 export const deleteDataset: Fetcher<DataSet, string> = (datasetID) => {
   return del<DataSet>(`/datasets/${datasetID}`)
+}
+
+export const fetchExternalAPIList: Fetcher<ExternalAPIListResponse, { url: string }> = ({ url }) => {
+  return get<ExternalAPIListResponse>(url)
+}
+
+export const fetchExternalAPI: Fetcher<ExternalAPIItem, { apiTemplateId: string }> = ({ apiTemplateId }) => {
+  return get<ExternalAPIItem>(`/datasets/external-knowledge-api/${apiTemplateId}`)
+}
+
+export const updateExternalAPI: Fetcher<ExternalAPIItem, { apiTemplateId: string; body: ExternalAPIItem }> = ({ apiTemplateId, body }) => {
+  return patch<ExternalAPIItem>(`/datasets/external-knowledge-api/${apiTemplateId}`, { body })
+}
+
+export const deleteExternalAPI: Fetcher<ExternalAPIDeleteResponse, { apiTemplateId: string }> = ({ apiTemplateId }) => {
+  return del<ExternalAPIDeleteResponse>(`/datasets/external-knowledge-api/${apiTemplateId}`)
+}
+
+export const checkUsageExternalAPI: Fetcher<ExternalAPIUsage, { apiTemplateId: string }> = ({ apiTemplateId }) => {
+  return get<ExternalAPIUsage>(`/datasets/external-knowledge-api/${apiTemplateId}/use-check`)
+}
+
+export const createExternalAPI: Fetcher<ExternalAPIItem, { body: CreateExternalAPIReq }> = ({ body }) => {
+  return post<ExternalAPIItem>('/datasets/external-knowledge-api', { body })
+}
+
+export const createExternalKnowledgeBase: Fetcher<ExternalKnowledgeItem, { body: CreateKnowledgeBaseReq }> = ({ body }) => {
+  return post<ExternalKnowledgeItem>('/datasets/external', { body })
 }
 
 export const fetchDefaultProcessRule: Fetcher<ProcessRuleResponse, { url: string }> = ({ url }) => {
@@ -104,8 +149,10 @@ export const fetchIndexingStatusBatch: Fetcher<IndexingStatusBatchResponse, Batc
   return get<IndexingStatusBatchResponse>(`/datasets/${datasetId}/batch/${batchId}/indexing-status`, {})
 }
 
-export const fetchDocumentDetail: Fetcher<DocumentDetailResponse, CommonDocReq & { params: { metadata?: MetadataType } }> = ({ datasetId, documentId, params }) => {
-  return get<DocumentDetailResponse>(`/datasets/${datasetId}/documents/${documentId}`, { params })
+export const renameDocumentName: Fetcher<CommonResponse, CommonDocReq & { name: string }> = ({ datasetId, documentId, name }) => {
+  return post<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/rename`, {
+    body: { name },
+  })
 }
 
 export const pauseDocIndexing: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
@@ -116,30 +163,6 @@ export const resumeDocIndexing: Fetcher<CommonResponse, CommonDocReq> = ({ datas
   return patch<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/processing/resume`)
 }
 
-export const deleteDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return del<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}`)
-}
-
-export const archiveDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/status/archive`)
-}
-
-export const unArchiveDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/status/un_archive`)
-}
-
-export const enableDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/status/enable`)
-}
-
-export const disableDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/status/disable`)
-}
-
-export const syncDocument: Fetcher<CommonResponse, CommonDocReq> = ({ datasetId, documentId }) => {
-  return get<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/notion/sync`)
-}
-
 export const preImportNotionPages: Fetcher<{ notion_info: DataSourceNotionWorkspace[] }, { url: string; datasetId?: string }> = ({ url, datasetId }) => {
   return get<{ notion_info: DataSourceNotionWorkspace[] }>(url, { params: { dataset_id: datasetId } })
 }
@@ -148,43 +171,13 @@ export const modifyDocMetadata: Fetcher<CommonResponse, CommonDocReq & { body: {
   return put<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/metadata`, { body })
 }
 
-// apis for segments in a document
-
-export const fetchSegments: Fetcher<SegmentsResponse, CommonDocReq & { params: SegmentsQuery }> = ({ datasetId, documentId, params }) => {
-  return get<SegmentsResponse>(`/datasets/${datasetId}/documents/${documentId}/segments`, { params })
-}
-
-export const enableSegment: Fetcher<CommonResponse, { datasetId: string; segmentId: string }> = ({ datasetId, segmentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/segments/${segmentId}/enable`)
-}
-
-export const disableSegment: Fetcher<CommonResponse, { datasetId: string; segmentId: string }> = ({ datasetId, segmentId }) => {
-  return patch<CommonResponse>(`/datasets/${datasetId}/segments/${segmentId}/disable`)
-}
-
-export const updateSegment: Fetcher<{ data: SegmentDetailModel; doc_form: string }, { datasetId: string; documentId: string; segmentId: string; body: SegmentUpdator }> = ({ datasetId, documentId, segmentId, body }) => {
-  return patch<{ data: SegmentDetailModel; doc_form: string }>(`/datasets/${datasetId}/documents/${documentId}/segments/${segmentId}`, { body })
-}
-
-export const addSegment: Fetcher<{ data: SegmentDetailModel; doc_form: string }, { datasetId: string; documentId: string; body: SegmentUpdator }> = ({ datasetId, documentId, body }) => {
-  return post<{ data: SegmentDetailModel; doc_form: string }>(`/datasets/${datasetId}/documents/${documentId}/segment`, { body })
-}
-
-export const deleteSegment: Fetcher<CommonResponse, { datasetId: string; documentId: string; segmentId: string }> = ({ datasetId, documentId, segmentId }) => {
-  return del<CommonResponse>(`/datasets/${datasetId}/documents/${documentId}/segments/${segmentId}`)
-}
-
-export const segmentBatchImport: Fetcher<{ job_id: string; job_status: string }, { url: string; body: FormData }> = ({ url, body }) => {
-  return post<{ job_id: string; job_status: string }>(url, { body }, { bodyStringify: false, deleteContentType: true })
-}
-
-export const checkSegmentBatchImportProgress: Fetcher<{ job_id: string; job_status: string }, { jobID: string }> = ({ jobID }) => {
-  return get<{ job_id: string; job_status: string }>(`/datasets/batch_import_status/${jobID}`)
-}
-
 // hit testing
 export const hitTesting: Fetcher<HitTestingResponse, { datasetId: string; queryText: string; retrieval_model: RetrievalConfig }> = ({ datasetId, queryText, retrieval_model }) => {
   return post<HitTestingResponse>(`/datasets/${datasetId}/hit-testing`, { body: { query: queryText, retrieval_model } })
+}
+
+export const externalKnowledgeBaseHitTesting: Fetcher<ExternalKnowledgeBaseHitTestingResponse, { datasetId: string; query: string; external_retrieval_model: { top_k: number; score_threshold: number; score_threshold_enabled: boolean } }> = ({ datasetId, query, external_retrieval_model }) => {
+  return post<ExternalKnowledgeBaseHitTestingResponse>(`/datasets/${datasetId}/external-hit-testing`, { body: { query, external_retrieval_model } })
 }
 
 export const fetchTestingRecords: Fetcher<HitTestingRecordsResponse, { datasetId: string; params: { page: number; limit: number } }> = ({ datasetId, params }) => {
@@ -199,8 +192,8 @@ export const fetchNotionPagePreview: Fetcher<{ content: string }, { workspaceID:
   return get<{ content: string }>(`notion/workspaces/${workspaceID}/pages/${pageID}/${pageType}/preview`)
 }
 
-export const fetchApiKeysList: Fetcher<ApikeysListResponse, { url: string; params: Record<string, any> }> = ({ url, params }) => {
-  return get<ApikeysListResponse>(url, params)
+export const fetchApiKeysList: Fetcher<ApiKeysListResponse, { url: string; params: Record<string, any> }> = ({ url, params }) => {
+  return get<ApiKeysListResponse>(url, params)
 }
 
 export const delApikey: Fetcher<CommonResponse, { url: string; params: Record<string, any> }> = ({ url, params }) => {
@@ -215,10 +208,68 @@ export const fetchDatasetApiBaseUrl: Fetcher<{ api_base_url: string }, string> =
   return get<{ api_base_url: string }>(url)
 }
 
+export const fetchDataSources = () => {
+  return get<CommonResponse>('api-key-auth/data-source')
+}
+
+export const createDataSourceApiKeyBinding: Fetcher<CommonResponse, Record<string, any>> = (body) => {
+  return post<CommonResponse>('api-key-auth/data-source/binding', { body })
+}
+
+export const removeDataSourceApiKeyBinding: Fetcher<CommonResponse, string> = (id: string) => {
+  return del<CommonResponse>(`api-key-auth/data-source/${id}`)
+}
+
+export const createFirecrawlTask: Fetcher<CommonResponse, Record<string, any>> = (body) => {
+  return post<CommonResponse>('website/crawl', {
+    body: {
+      ...body,
+      provider: DataSourceProvider.fireCrawl,
+    },
+  })
+}
+
+export const checkFirecrawlTaskStatus: Fetcher<CommonResponse, string> = (jobId: string) => {
+  return get<CommonResponse>(`website/crawl/status/${jobId}`, {
+    params: {
+      provider: DataSourceProvider.fireCrawl,
+    },
+  }, {
+    silent: true,
+  })
+}
+
+export const createJinaReaderTask: Fetcher<CommonResponse, Record<string, any>> = (body) => {
+  return post<CommonResponse>('website/crawl', {
+    body: {
+      ...body,
+      provider: DataSourceProvider.jinaReader,
+    },
+  })
+}
+
+export const checkJinaReaderTaskStatus: Fetcher<CommonResponse, string> = (jobId: string) => {
+  return get<CommonResponse>(`website/crawl/status/${jobId}`, {
+    params: {
+      provider: 'jinareader',
+    },
+  }, {
+    silent: true,
+  })
+}
+
 type FileTypesRes = {
   allowed_extensions: string[]
 }
 
 export const fetchSupportFileTypes: Fetcher<FileTypesRes, { url: string }> = ({ url }) => {
   return get<FileTypesRes>(url)
+}
+
+export const getErrorDocs: Fetcher<ErrorDocsResponse, { datasetId: string }> = ({ datasetId }) => {
+  return get<ErrorDocsResponse>(`/datasets/${datasetId}/error-docs`)
+}
+
+export const retryErrorDocs: Fetcher<CommonResponse, { datasetId: string; document_ids: string[] }> = ({ datasetId, document_ids }) => {
+  return post<CommonResponse>(`/datasets/${datasetId}/retry`, { body: { document_ids } })
 }

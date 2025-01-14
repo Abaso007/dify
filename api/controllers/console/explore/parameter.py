@@ -1,64 +1,54 @@
-# -*- coding:utf-8 -*-
-from flask_restful import marshal_with, fields
-from flask import current_app
+from flask_restful import marshal_with  # type: ignore
 
+from controllers.common import fields
+from controllers.common import helpers as controller_helpers
 from controllers.console import api
+from controllers.console.app.error import AppUnavailableError
 from controllers.console.explore.wraps import InstalledAppResource
-
-from models.model import InstalledApp
+from models.model import AppMode, InstalledApp
+from services.app_service import AppService
 
 
 class AppParameterApi(InstalledAppResource):
     """Resource for app variables."""
-    variable_fields = {
-        'key': fields.String,
-        'name': fields.String,
-        'description': fields.String,
-        'type': fields.String,
-        'default': fields.String,
-        'max_length': fields.Integer,
-        'options': fields.List(fields.String)
-    }
 
-    system_parameters_fields = {
-        'image_file_size_limit': fields.String
-    }
-
-    parameters_fields = {
-        'opening_statement': fields.String,
-        'suggested_questions': fields.Raw,
-        'suggested_questions_after_answer': fields.Raw,
-        'speech_to_text': fields.Raw,
-        'retriever_resource': fields.Raw,
-        'annotation_reply': fields.Raw,
-        'more_like_this': fields.Raw,
-        'user_input_form': fields.Raw,
-        'sensitive_word_avoidance': fields.Raw,
-        'file_upload': fields.Raw,
-        'system_parameters': fields.Nested(system_parameters_fields)
-    }
-
-    @marshal_with(parameters_fields)
+    @marshal_with(fields.parameters_fields)
     def get(self, installed_app: InstalledApp):
         """Retrieve app parameters."""
         app_model = installed_app.app
-        app_model_config = app_model.app_model_config
 
-        return {
-            'opening_statement': app_model_config.opening_statement,
-            'suggested_questions': app_model_config.suggested_questions_list,
-            'suggested_questions_after_answer': app_model_config.suggested_questions_after_answer_dict,
-            'speech_to_text': app_model_config.speech_to_text_dict,
-            'retriever_resource': app_model_config.retriever_resource_dict,
-            'annotation_reply': app_model_config.annotation_reply_dict,
-            'more_like_this': app_model_config.more_like_this_dict,
-            'user_input_form': app_model_config.user_input_form_list,
-            'sensitive_word_avoidance': app_model_config.sensitive_word_avoidance_dict,
-            'file_upload': app_model_config.file_upload_dict,
-            'system_parameters': {
-                'image_file_size_limit': current_app.config.get('UPLOAD_IMAGE_FILE_SIZE_LIMIT')
-            }
-        }
+        if app_model is None:
+            raise AppUnavailableError()
+
+        if app_model.mode in {AppMode.ADVANCED_CHAT.value, AppMode.WORKFLOW.value}:
+            workflow = app_model.workflow
+            if workflow is None:
+                raise AppUnavailableError()
+
+            features_dict = workflow.features_dict
+            user_input_form = workflow.user_input_form(to_old_structure=True)
+        else:
+            app_model_config = app_model.app_model_config
+            if app_model_config is None:
+                raise AppUnavailableError()
+
+            features_dict = app_model_config.to_dict()
+
+            user_input_form = features_dict.get("user_input_form", [])
+
+        return controller_helpers.get_parameters_from_feature_dict(
+            features_dict=features_dict, user_input_form=user_input_form
+        )
 
 
-api.add_resource(AppParameterApi, '/installed-apps/<uuid:installed_app_id>/parameters', endpoint='installed_app_parameters')
+class ExploreAppMetaApi(InstalledAppResource):
+    def get(self, installed_app: InstalledApp):
+        """Get app meta"""
+        app_model = installed_app.app
+        return AppService().get_app_meta(app_model)
+
+
+api.add_resource(
+    AppParameterApi, "/installed-apps/<uuid:installed_app_id>/parameters", endpoint="installed_app_parameters"
+)
+api.add_resource(ExploreAppMetaApi, "/installed-apps/<uuid:installed_app_id>/meta", endpoint="installed_app_meta")

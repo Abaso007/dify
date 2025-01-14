@@ -17,13 +17,18 @@ export type PlanInfo = {
   teamMembers: number
   buildApps: number
   vectorSpace: number
+  documentsUploadQuota: number
   documentProcessingPriority: Priority
   logHistory: number
-  messageRequest: number
+  customTools: string | number
+  messageRequest: {
+    en: string | number
+    zh: string | number
+  }
   annotatedResponse: number
 }
 
-export type UsagePlanInfo = Pick<PlanInfo, 'vectorSpace' | 'buildApps' | 'teamMembers' | 'annotatedResponse'>
+export type UsagePlanInfo = Pick<PlanInfo, 'vectorSpace' | 'buildApps' | 'teamMembers' | 'annotatedResponse' | 'documentsUploadQuota'>
 
 export enum DocumentProcessingPriority {
   standard = 'standard',
@@ -54,8 +59,14 @@ export type CurrentPlanInfoBackend = {
     size: number
     limit: number // total. 0 means unlimited
   }
+  documents_upload_quota: {
+    size: number
+    limit: number // total. 0 means unlimited
+  }
   docs_processing: DocumentProcessingPriority
   can_replace_logo: boolean
+  model_load_balancing_enabled: boolean
+  dataset_operator_enabled: boolean
 }
 
 export type SubscriptionItem = {

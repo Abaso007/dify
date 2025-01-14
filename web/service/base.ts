@@ -1,12 +1,29 @@
+import { refreshAccessTokenOrRelogin } from './refresh-token'
 import { API_PREFIX, IS_CE_EDITION, PUBLIC_API_PREFIX } from '@/config'
 import Toast from '@/app/components/base/toast'
-import type { AnnotationReply, MessageEnd, MessageReplace, ThoughtItem } from '@/app/components/app/chat/type'
-
+import type { AnnotationReply, MessageEnd, MessageReplace, ThoughtItem } from '@/app/components/base/chat/chat/type'
+import type { VisionFile } from '@/types/app'
+import type {
+  IterationFinishedResponse,
+  IterationNextResponse,
+  IterationStartedResponse,
+  NodeFinishedResponse,
+  NodeStartedResponse,
+  ParallelBranchFinishedResponse,
+  ParallelBranchStartedResponse,
+  TextChunkResponse,
+  TextReplaceResponse,
+  WorkflowFinishedResponse,
+  WorkflowStartedResponse,
+} from '@/types/workflow'
+import { removeAccessToken } from '@/app/components/share/utils'
+import { asyncRunSafe } from '@/utils'
 const TIME_OUT = 100000
 
 const ContentType = {
   json: 'application/json',
   stream: 'text/event-stream',
+  audio: 'audio/mpeg',
   form: 'application/x-www-form-urlencoded; charset=UTF-8',
   download: 'application/octet-stream', // for download
   upload: 'multipart/form-data', // for upload
@@ -32,24 +49,57 @@ export type IOnDataMoreInfo = {
 
 export type IOnData = (message: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => void
 export type IOnThought = (though: ThoughtItem) => void
+export type IOnFile = (file: VisionFile) => void
 export type IOnMessageEnd = (messageEnd: MessageEnd) => void
 export type IOnMessageReplace = (messageReplace: MessageReplace) => void
 export type IOnAnnotationReply = (messageReplace: AnnotationReply) => void
-export type IOnCompleted = (hasError?: boolean) => void
+export type IOnCompleted = (hasError?: boolean, errorMessage?: string) => void
 export type IOnError = (msg: string, code?: string) => void
 
-type IOtherOptions = {
+export type IOnWorkflowStarted = (workflowStarted: WorkflowStartedResponse) => void
+export type IOnWorkflowFinished = (workflowFinished: WorkflowFinishedResponse) => void
+export type IOnNodeStarted = (nodeStarted: NodeStartedResponse) => void
+export type IOnNodeFinished = (nodeFinished: NodeFinishedResponse) => void
+export type IOnIterationStarted = (workflowStarted: IterationStartedResponse) => void
+export type IOnIterationNext = (workflowStarted: IterationNextResponse) => void
+export type IOnNodeRetry = (nodeFinished: NodeFinishedResponse) => void
+export type IOnIterationFinished = (workflowFinished: IterationFinishedResponse) => void
+export type IOnParallelBranchStarted = (parallelBranchStarted: ParallelBranchStartedResponse) => void
+export type IOnParallelBranchFinished = (parallelBranchFinished: ParallelBranchFinishedResponse) => void
+export type IOnTextChunk = (textChunk: TextChunkResponse) => void
+export type IOnTTSChunk = (messageId: string, audioStr: string, audioType?: string) => void
+export type IOnTTSEnd = (messageId: string, audioStr: string, audioType?: string) => void
+export type IOnTextReplace = (textReplace: TextReplaceResponse) => void
+
+export type IOtherOptions = {
   isPublicAPI?: boolean
   bodyStringify?: boolean
   needAllResponseContent?: boolean
   deleteContentType?: boolean
+  silent?: boolean
   onData?: IOnData // for stream
   onThought?: IOnThought
+  onFile?: IOnFile
   onMessageEnd?: IOnMessageEnd
   onMessageReplace?: IOnMessageReplace
   onError?: IOnError
   onCompleted?: IOnCompleted // for stream
   getAbortController?: (abortController: AbortController) => void
+
+  onWorkflowStarted?: IOnWorkflowStarted
+  onWorkflowFinished?: IOnWorkflowFinished
+  onNodeStarted?: IOnNodeStarted
+  onNodeFinished?: IOnNodeFinished
+  onIterationStart?: IOnIterationStarted
+  onIterationNext?: IOnIterationNext
+  onIterationFinish?: IOnIterationFinished
+  onNodeRetry?: IOnNodeRetry
+  onParallelBranchStarted?: IOnParallelBranchStarted
+  onParallelBranchFinished?: IOnParallelBranchFinished
+  onTextChunk?: IOnTextChunk
+  onTTSChunk?: IOnTTSChunk
+  onTTSEnd?: IOnTTSEnd
+  onTextReplace?: IOnTextReplace
 }
 
 type ResponseError = {
@@ -72,6 +122,28 @@ function unicodeToChar(text: string) {
   })
 }
 
+function requiredWebSSOLogin() {
+  globalThis.location.href = `/webapp-signin?redirect_url=${globalThis.location.pathname}`
+}
+
+function getAccessToken(isPublicAPI?: boolean) {
+  if (isPublicAPI) {
+    const sharedToken = globalThis.location.pathname.split('/').slice(-1)[0]
+    const accessToken = localStorage.getItem('token') || JSON.stringify({ [sharedToken]: '' })
+    let accessTokenJson = { [sharedToken]: '' }
+    try {
+      accessTokenJson = JSON.parse(accessToken)
+    }
+    catch (e) {
+
+    }
+    return accessTokenJson[sharedToken]
+  }
+  else {
+    return localStorage.getItem('console_token') || ''
+  }
+}
+
 export function format(text: string) {
   let res = text.trim()
   if (res.startsWith('\n'))
@@ -80,7 +152,29 @@ export function format(text: string) {
   return res.replaceAll('\n', '<br/>').replaceAll('```', '')
 }
 
-const handleStream = (response: Response, onData: IOnData, onCompleted?: IOnCompleted, onThought?: IOnThought, onMessageEnd?: IOnMessageEnd, onMessageReplace?: IOnMessageReplace) => {
+const handleStream = (
+  response: Response,
+  onData: IOnData,
+  onCompleted?: IOnCompleted,
+  onThought?: IOnThought,
+  onMessageEnd?: IOnMessageEnd,
+  onMessageReplace?: IOnMessageReplace,
+  onFile?: IOnFile,
+  onWorkflowStarted?: IOnWorkflowStarted,
+  onWorkflowFinished?: IOnWorkflowFinished,
+  onNodeStarted?: IOnNodeStarted,
+  onNodeFinished?: IOnNodeFinished,
+  onIterationStart?: IOnIterationStarted,
+  onIterationNext?: IOnIterationNext,
+  onIterationFinish?: IOnIterationFinished,
+  onNodeRetry?: IOnNodeRetry,
+  onParallelBranchStarted?: IOnParallelBranchStarted,
+  onParallelBranchFinished?: IOnParallelBranchFinished,
+  onTextChunk?: IOnTextChunk,
+  onTTSChunk?: IOnTTSChunk,
+  onTTSEnd?: IOnTTSEnd,
+  onTextReplace?: IOnTextReplace,
+) => {
   if (!response.ok)
     throw new Error('Network response was not ok')
 
@@ -108,7 +202,7 @@ const handleStream = (response: Response, onData: IOnData, onCompleted?: IOnComp
               // mute handle message cut off
               onData('', isFirstMessage, {
                 conversationId: bufferObj?.conversation_id,
-                messageId: bufferObj?.id,
+                messageId: bufferObj?.message_id,
               })
               return
             }
@@ -120,11 +214,11 @@ const handleStream = (response: Response, onData: IOnData, onCompleted?: IOnComp
                 errorCode: bufferObj?.code,
               })
               hasError = true
-              onCompleted?.(true)
+              onCompleted?.(true, bufferObj?.message)
               return
             }
-            if (bufferObj.event === 'message') {
-              // can not use format here. Because message is splited.
+            if (bufferObj.event === 'message' || bufferObj.event === 'agent_message') {
+              // can not use format here. Because message is splitted.
               onData(unicodeToChar(bufferObj.answer), isFirstMessage, {
                 conversationId: bufferObj.conversation_id,
                 taskId: bufferObj.task_id,
@@ -135,11 +229,56 @@ const handleStream = (response: Response, onData: IOnData, onCompleted?: IOnComp
             else if (bufferObj.event === 'agent_thought') {
               onThought?.(bufferObj as ThoughtItem)
             }
+            else if (bufferObj.event === 'message_file') {
+              onFile?.(bufferObj as VisionFile)
+            }
             else if (bufferObj.event === 'message_end') {
               onMessageEnd?.(bufferObj as MessageEnd)
             }
             else if (bufferObj.event === 'message_replace') {
               onMessageReplace?.(bufferObj as MessageReplace)
+            }
+            else if (bufferObj.event === 'workflow_started') {
+              onWorkflowStarted?.(bufferObj as WorkflowStartedResponse)
+            }
+            else if (bufferObj.event === 'workflow_finished') {
+              onWorkflowFinished?.(bufferObj as WorkflowFinishedResponse)
+            }
+            else if (bufferObj.event === 'node_started') {
+              onNodeStarted?.(bufferObj as NodeStartedResponse)
+            }
+            else if (bufferObj.event === 'node_finished') {
+              onNodeFinished?.(bufferObj as NodeFinishedResponse)
+            }
+            else if (bufferObj.event === 'iteration_started') {
+              onIterationStart?.(bufferObj as IterationStartedResponse)
+            }
+            else if (bufferObj.event === 'iteration_next') {
+              onIterationNext?.(bufferObj as IterationNextResponse)
+            }
+            else if (bufferObj.event === 'iteration_completed') {
+              onIterationFinish?.(bufferObj as IterationFinishedResponse)
+            }
+            else if (bufferObj.event === 'node_retry') {
+              onNodeRetry?.(bufferObj as NodeFinishedResponse)
+            }
+            else if (bufferObj.event === 'parallel_branch_started') {
+              onParallelBranchStarted?.(bufferObj as ParallelBranchStartedResponse)
+            }
+            else if (bufferObj.event === 'parallel_branch_finished') {
+              onParallelBranchFinished?.(bufferObj as ParallelBranchFinishedResponse)
+            }
+            else if (bufferObj.event === 'text_chunk') {
+              onTextChunk?.(bufferObj as TextChunkResponse)
+            }
+            else if (bufferObj.event === 'text_replace') {
+              onTextReplace?.(bufferObj as TextReplaceResponse)
+            }
+            else if (bufferObj.event === 'tts_message') {
+              onTTSChunk?.(bufferObj.message_id, bufferObj.audio, bufferObj.audio_type)
+            }
+            else if (bufferObj.event === 'tts_message_end') {
+              onTTSEnd?.(bufferObj.message_id, bufferObj.audio)
             }
           }
         })
@@ -152,7 +291,7 @@ const handleStream = (response: Response, onData: IOnData, onCompleted?: IOnComp
           errorMessage: `${e}`,
         })
         hasError = true
-        onCompleted?.(true)
+        onCompleted?.(true, e as string)
         return
       }
       if (!hasError)
@@ -170,25 +309,18 @@ const baseFetch = <T>(
     bodyStringify = true,
     needAllResponseContent,
     deleteContentType,
+    getAbortController,
+    silent,
   }: IOtherOptions,
 ): Promise<T> => {
   const options: typeof baseOptions & FetchOptionType = Object.assign({}, baseOptions, fetchOptions)
-  if (isPublicAPI) {
-    const sharedToken = globalThis.location.pathname.split('/').slice(-1)[0]
-    const accessToken = localStorage.getItem('token') || JSON.stringify({ [sharedToken]: '' })
-    let accessTokenJson = { [sharedToken]: '' }
-    try {
-      accessTokenJson = JSON.parse(accessToken)
-    }
-    catch (e) {
-
-    }
-    options.headers.set('Authorization', `Bearer ${accessTokenJson[sharedToken]}`)
+  if (getAbortController) {
+    const abortController = new AbortController()
+    getAbortController(abortController)
+    options.signal = abortController.signal
   }
-  else {
-    const accessToken = localStorage.getItem('console_token') || ''
-    options.headers.set('Authorization', `Bearer ${accessToken}`)
-  }
+  const accessToken = getAccessToken(isPublicAPI)
+  options.headers.set('Authorization', `Bearer ${accessToken}`)
 
   if (deleteContentType) {
     options.headers.delete('Content-Type')
@@ -200,7 +332,9 @@ const baseFetch = <T>(
   }
 
   const urlPrefix = isPublicAPI ? PUBLIC_API_PREFIX : API_PREFIX
-  let urlWithPrefix = `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
+  let urlWithPrefix = (url.startsWith('http://') || url.startsWith('https://'))
+    ? url
+    : `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
 
   const { method, params, body } = options
   // handle query
@@ -236,31 +370,12 @@ const baseFetch = <T>(
           if (!/^(2|3)\d{2}$/.test(String(res.status))) {
             const bodyJson = res.json()
             switch (res.status) {
-              case 401: {
-                if (isPublicAPI) {
-                  return bodyJson.then((data: ResponseError) => {
-                    Toast.notify({ type: 'error', message: data.message })
-                    return Promise.reject(data)
-                  })
-                }
-                const loginUrl = `${globalThis.location.origin}/signin`
-                bodyJson.then((data: ResponseError) => {
-                  if (data.code === 'not_setup' && IS_CE_EDITION)
-                    globalThis.location.href = `${globalThis.location.origin}/install`
-                  else if (location.pathname !== '/signin' || !IS_CE_EDITION)
-                    globalThis.location.href = loginUrl
-                  else
-                    Toast.notify({ type: 'error', message: data.message })
-                }).catch(() => {
-                  // Handle any other errors
-                  globalThis.location.href = loginUrl
-                })
-
-                break
-              }
+              case 401:
+                return Promise.reject(resClone)
               case 403:
                 bodyJson.then((data: ResponseError) => {
-                  Toast.notify({ type: 'error', message: data.message })
+                  if (!silent)
+                    Toast.notify({ type: 'error', message: data.message })
                   if (data.code === 'already_setup')
                     globalThis.location.href = `${globalThis.location.origin}/signin`
                 })
@@ -268,7 +383,8 @@ const baseFetch = <T>(
               // fall through
               default:
                 bodyJson.then((data: ResponseError) => {
-                  Toast.notify({ type: 'error', message: data.message })
+                  if (!silent)
+                    Toast.notify({ type: 'error', message: data.message })
                 })
             }
             return Promise.reject(resClone)
@@ -281,40 +397,26 @@ const baseFetch = <T>(
           }
 
           // return data
-          const data: Promise<T> = options.headers.get('Content-type') === ContentType.download ? res.blob() : res.json()
+          if (options.headers.get('Content-type') === ContentType.download || options.headers.get('Content-type') === ContentType.audio)
+            resolve(needAllResponseContent ? resClone : res.blob())
 
-          resolve(needAllResponseContent ? resClone : data)
+          else resolve(needAllResponseContent ? resClone : res.json())
         })
         .catch((err) => {
-          Toast.notify({ type: 'error', message: err })
+          if (!silent)
+            Toast.notify({ type: 'error', message: err })
           reject(err)
         })
     }),
   ]) as Promise<T>
 }
 
-export const upload = (options: any, isPublicAPI?: boolean, url?: string): Promise<any> => {
+export const upload = (options: any, isPublicAPI?: boolean, url?: string, searchParams?: string): Promise<any> => {
   const urlPrefix = isPublicAPI ? PUBLIC_API_PREFIX : API_PREFIX
-  let token = ''
-  if (isPublicAPI) {
-    const sharedToken = globalThis.location.pathname.split('/').slice(-1)[0]
-    const accessToken = localStorage.getItem('token') || JSON.stringify({ [sharedToken]: '' })
-    let accessTokenJson = { [sharedToken]: '' }
-    try {
-      accessTokenJson = JSON.parse(accessToken)
-    }
-    catch (e) {
-
-    }
-    token = accessTokenJson[sharedToken]
-  }
-  else {
-    const accessToken = localStorage.getItem('console_token') || ''
-    token = accessToken
-  }
+  const token = getAccessToken(isPublicAPI)
   const defaultOptions = {
     method: 'POST',
-    url: url ? `${urlPrefix}${url}` : `${urlPrefix}/files/upload`,
+    url: (url ? `${urlPrefix}${url}` : `${urlPrefix}/files/upload`) + (searchParams || ''),
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -346,7 +448,36 @@ export const upload = (options: any, isPublicAPI?: boolean, url?: string): Promi
   })
 }
 
-export const ssePost = (url: string, fetchOptions: FetchOptionType, { isPublicAPI = false, onData, onCompleted, onThought, onMessageEnd, onMessageReplace, onError, getAbortController }: IOtherOptions) => {
+export const ssePost = (
+  url: string,
+  fetchOptions: FetchOptionType,
+  otherOptions: IOtherOptions,
+) => {
+  const {
+    isPublicAPI = false,
+    onData,
+    onCompleted,
+    onThought,
+    onFile,
+    onMessageEnd,
+    onMessageReplace,
+    onWorkflowStarted,
+    onWorkflowFinished,
+    onNodeStarted,
+    onNodeFinished,
+    onIterationStart,
+    onIterationNext,
+    onIterationFinish,
+    onNodeRetry,
+    onParallelBranchStarted,
+    onParallelBranchFinished,
+    onTextChunk,
+    onTTSChunk,
+    onTTSEnd,
+    onTextReplace,
+    onError,
+    getAbortController,
+  } = otherOptions
   const abortController = new AbortController()
 
   const options = Object.assign({}, baseOptions, {
@@ -361,40 +492,135 @@ export const ssePost = (url: string, fetchOptions: FetchOptionType, { isPublicAP
   getAbortController?.(abortController)
 
   const urlPrefix = isPublicAPI ? PUBLIC_API_PREFIX : API_PREFIX
-  const urlWithPrefix = `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
+  const urlWithPrefix = (url.startsWith('http://') || url.startsWith('https://'))
+    ? url
+    : `${urlPrefix}${url.startsWith('/') ? url : `/${url}`}`
 
   const { body } = options
   if (body)
     options.body = JSON.stringify(body)
 
+  const accessToken = getAccessToken(isPublicAPI)
+  options.headers.set('Authorization', `Bearer ${accessToken}`)
+
   globalThis.fetch(urlWithPrefix, options as RequestInit)
     .then((res) => {
       if (!/^(2|3)\d{2}$/.test(String(res.status))) {
-        res.json().then((data: any) => {
-          Toast.notify({ type: 'error', message: data.message || 'Server Error' })
-        })
-        onError?.('Server Error')
+        if (res.status === 401) {
+          refreshAccessTokenOrRelogin(TIME_OUT).then(() => {
+            ssePost(url, fetchOptions, otherOptions)
+          }).catch(() => {
+            res.json().then((data: any) => {
+              if (isPublicAPI) {
+                if (data.code === 'web_sso_auth_required')
+                  requiredWebSSOLogin()
+
+                if (data.code === 'unauthorized') {
+                  removeAccessToken()
+                  globalThis.location.reload()
+                }
+              }
+            })
+          })
+        }
+        else {
+          res.json().then((data) => {
+            Toast.notify({ type: 'error', message: data.message || 'Server Error' })
+          })
+          onError?.('Server Error')
+        }
         return
       }
       return handleStream(res, (str: string, isFirstMessage: boolean, moreInfo: IOnDataMoreInfo) => {
         if (moreInfo.errorMessage) {
           onError?.(moreInfo.errorMessage, moreInfo.errorCode)
-          if (moreInfo.errorMessage !== 'AbortError: The user aborted a request.')
+          // TypeError: Cannot assign to read only property ... will happen in page leave, so it should be ignored.
+          if (moreInfo.errorMessage !== 'AbortError: The user aborted a request.' && !moreInfo.errorMessage.includes('TypeError: Cannot assign to read only property'))
             Toast.notify({ type: 'error', message: moreInfo.errorMessage })
           return
         }
         onData?.(str, isFirstMessage, moreInfo)
-      }, onCompleted, onThought, onMessageEnd, onMessageReplace)
+      }, onCompleted, onThought, onMessageEnd, onMessageReplace, onFile, onWorkflowStarted, onWorkflowFinished, onNodeStarted, onNodeFinished, onIterationStart, onIterationNext, onIterationFinish, onNodeRetry, onParallelBranchStarted, onParallelBranchFinished, onTextChunk, onTTSChunk, onTTSEnd, onTextReplace)
     }).catch((e) => {
-      if (e.toString() !== 'AbortError: The user aborted a request.')
+      if (e.toString() !== 'AbortError: The user aborted a request.' && !e.toString().errorMessage.includes('TypeError: Cannot assign to read only property'))
         Toast.notify({ type: 'error', message: e })
       onError?.(e)
     })
 }
 
 // base request
-export const request = <T>(url: string, options = {}, otherOptions?: IOtherOptions) => {
-  return baseFetch<T>(url, options, otherOptions || {})
+export const request = async<T>(url: string, options = {}, otherOptions?: IOtherOptions) => {
+  try {
+    const otherOptionsForBaseFetch = otherOptions || {}
+    const [err, resp] = await asyncRunSafe<T>(baseFetch(url, options, otherOptionsForBaseFetch))
+    if (err === null)
+      return resp
+    const errResp: Response = err as any
+    if (errResp.status === 401) {
+      const [parseErr, errRespData] = await asyncRunSafe<ResponseError>(errResp.json())
+      const loginUrl = `${globalThis.location.origin}/signin`
+      if (parseErr) {
+        globalThis.location.href = loginUrl
+        return Promise.reject(err)
+      }
+      // special code
+      const { code, message } = errRespData
+      // webapp sso
+      if (code === 'web_sso_auth_required') {
+        requiredWebSSOLogin()
+        return Promise.reject(err)
+      }
+      if (code === 'unauthorized_and_force_logout') {
+        localStorage.removeItem('console_token')
+        localStorage.removeItem('refresh_token')
+        globalThis.location.reload()
+        return Promise.reject(err)
+      }
+      const {
+        isPublicAPI = false,
+        silent,
+      } = otherOptionsForBaseFetch
+      if (isPublicAPI && code === 'unauthorized') {
+        removeAccessToken()
+        globalThis.location.reload()
+        return Promise.reject(err)
+      }
+      if (code === 'init_validate_failed' && IS_CE_EDITION && !silent) {
+        Toast.notify({ type: 'error', message, duration: 4000 })
+        return Promise.reject(err)
+      }
+      if (code === 'not_init_validated' && IS_CE_EDITION) {
+        globalThis.location.href = `${globalThis.location.origin}/init`
+        return Promise.reject(err)
+      }
+      if (code === 'not_setup' && IS_CE_EDITION) {
+        globalThis.location.href = `${globalThis.location.origin}/install`
+        return Promise.reject(err)
+      }
+
+      // refresh token
+      const [refreshErr] = await asyncRunSafe(refreshAccessTokenOrRelogin(TIME_OUT))
+      if (refreshErr === null)
+        return baseFetch<T>(url, options, otherOptionsForBaseFetch)
+      if (location.pathname !== '/signin' || !IS_CE_EDITION) {
+        globalThis.location.href = loginUrl
+        return Promise.reject(err)
+      }
+      if (!silent) {
+        Toast.notify({ type: 'error', message })
+        return Promise.reject(err)
+      }
+      globalThis.location.href = loginUrl
+      return Promise.reject(err)
+    }
+    else {
+      return Promise.reject(err)
+    }
+  }
+  catch (error) {
+    console.error(error)
+    return Promise.reject(error)
+  }
 }
 
 // request methods

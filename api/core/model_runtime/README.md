@@ -13,13 +13,14 @@ This module provides the interface for invoking and authenticating various model
   - `Text Embedding Model` - Text Embedding, pre-computed tokens capability
   - `Rerank Model` - Segment Rerank capability
   - `Speech-to-text Model` - Speech to text capability
+  - `Text-to-speech Model` - Text to speech capability
   - `Moderation` - Moderation capability
 
 - Model provider display
 
   ![image-20231210143654461](./docs/en_US/images/index/image-20231210143654461.png)
 
-  Displays a list of all supported providers, including provider names, icons, supported model types list, predefined model list, configuration method, and credentials form rules, etc. For detailed rule design, see: [Schema](./schema.md).
+  Displays a list of all supported providers, including provider names, icons, supported model types list, predefined model list, configuration method, and credentials form rules, etc. For detailed rule design, see: [Schema](./docs/en_US/schema.md).
 
 - Selectable model list display
 

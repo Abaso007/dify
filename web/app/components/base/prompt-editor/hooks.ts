@@ -35,8 +35,8 @@ import { DELETE_QUERY_BLOCK_COMMAND } from './plugins/query-block'
 import type { CustomTextNode } from './plugins/custom-text/node'
 import { registerLexicalTextEntity } from './utils'
 
-export type UseSelectOrDeleteHanlder = (nodeKey: string, command?: LexicalCommand<undefined>) => [RefObject<HTMLDivElement>, boolean]
-export const useSelectOrDelete: UseSelectOrDeleteHanlder = (nodeKey: string, command?: LexicalCommand<undefined>) => {
+export type UseSelectOrDeleteHandler = (nodeKey: string, command?: LexicalCommand<undefined>) => [RefObject<HTMLDivElement>, boolean]
+export const useSelectOrDelete: UseSelectOrDeleteHandler = (nodeKey: string, command?: LexicalCommand<undefined>) => {
   const ref = useRef<HTMLDivElement>(null)
   const [editor] = useLexicalComposerContext()
   const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(nodeKey)
@@ -64,6 +64,7 @@ export const useSelectOrDelete: UseSelectOrDeleteHanlder = (nodeKey: string, com
             editor.dispatchCommand(command, undefined)
 
           node.remove()
+          return true
         }
       }
 
@@ -158,9 +159,9 @@ export function useBasicTypeaheadTriggerMatch(
 ): TriggerFn {
   return useCallback(
     (text: string) => {
-      const validChars = `[^${trigger}${PUNCTUATION}\\s]`
+      const validChars = `[${PUNCTUATION}\\s]`
       const TypeaheadTriggerRegex = new RegExp(
-        `([^${trigger}]|^)(`
+        '(.*)('
           + `[${trigger}]`
           + `((?:${validChars}){0,${maxLength}})`
           + ')$',

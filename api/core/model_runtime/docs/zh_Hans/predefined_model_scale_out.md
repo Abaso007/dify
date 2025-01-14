@@ -10,6 +10,7 @@
 - `text_embedding` 文本 Embedding 模型
 - `rerank` Rerank 模型
 - `speech2text` 语音转文字
+- `tts` 文字转语音
 - `moderation` 审查
 
 依旧以 `Anthropic` 为例，`Anthropic` 仅支持 LLM，因此在 `model_providers.anthropic` 创建一个 `llm` 为名称的 `module`。
@@ -61,7 +62,7 @@ pricing:  # 价格信息
 
 建议将所有模型配置都准备完毕后再开始模型代码的实现。
 
-同样，也可以参考  `model_providers` 目录下其他供应商对应模型类型目录下的 YAML 配置信息，完整的 YAML 规则见：[Schema](schema.md#AIModel)。
+同样，也可以参考  `model_providers` 目录下其他供应商对应模型类型目录下的 YAML 配置信息，完整的 YAML 规则见：[Schema](schema.md#aimodelentity)。
 
 ### 实现模型调用代码
 
@@ -76,7 +77,7 @@ pricing:  # 价格信息
   ```python
   def _invoke(self, model: str, credentials: dict,
               prompt_messages: list[PromptMessage], model_parameters: dict,
-              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[List[str]] = None,
+              tools: Optional[list[PromptMessageTool]] = None, stop: Optional[list[str]] = None,
               stream: bool = True, user: Optional[str] = None) \
           -> Union[LLMResult, Generator]:
       """

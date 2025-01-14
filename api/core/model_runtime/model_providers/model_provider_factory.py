@@ -1,14 +1,14 @@
-import importlib
 import logging
 import os
-from collections import OrderedDict
+from collections.abc import Sequence
 from typing import Optional
 
-import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
+from core.helper.module_import_helper import load_single_subclass_from_source
+from core.helper.position_helper import get_provider_position_map, sort_to_dict_by_position_map
 from core.model_runtime.entities.model_entities import ModelType
-from core.model_runtime.entities.provider_entities import SimpleProviderEntity, ProviderConfig, ProviderEntity
+from core.model_runtime.entities.provider_entities import ProviderConfig, ProviderEntity, SimpleProviderEntity
 from core.model_runtime.model_providers.__base.model_provider import ModelProvider
 from core.model_runtime.schema_validators.model_credential_schema_validator import ModelCredentialSchemaValidator
 from core.model_runtime.schema_validators.provider_credential_schema_validator import ProviderCredentialSchemaValidator
@@ -17,24 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 class ModelProviderExtension(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     provider_instance: ModelProvider
     name: str
     position: Optional[int] = None
 
-    class Config:
-        """Configuration for this pydantic object."""
-
-        arbitrary_types_allowed = True
-
 
 class ModelProviderFactory:
-    model_provider_extensions: dict[str, ModelProviderExtension] = None
+    model_provider_extensions: Optional[dict[str, ModelProviderExtension]] = None
 
     def __init__(self) -> None:
         # for cache in memory
         self.get_providers()
 
-    def get_providers(self) -> list[ProviderEntity]:
+    def get_providers(self) -> Sequence[ProviderEntity]:
         """
         Get all providers
         :return: list of providers
@@ -44,7 +41,7 @@ class ModelProviderFactory:
 
         # traverse all model_provider_extensions
         providers = []
-        for name, model_provider_extension in model_provider_extensions.items():
+        for model_provider_extension in model_provider_extensions.values():
             # get model_provider instance
             model_provider_instance = model_provider_extension.provider_instance
 
@@ -62,7 +59,7 @@ class ModelProviderFactory:
         # return providers
         return providers
 
-    def provider_credentials_validate(self, provider: str, credentials: dict) -> None:
+    def provider_credentials_validate(self, *, provider: str, credentials: dict) -> dict:
         """
         Validate provider credentials
 
@@ -79,15 +76,21 @@ class ModelProviderFactory:
         # get provider_credential_schema and validate credentials according to the rules
         provider_credential_schema = provider_schema.provider_credential_schema
 
+        if not provider_credential_schema:
+            raise ValueError(f"Provider {provider} does not have provider_credential_schema")
+
         # validate provider credential schema
         validator = ProviderCredentialSchemaValidator(provider_credential_schema)
-        validator.validate_and_filter(credentials)
+        filtered_credentials = validator.validate_and_filter(credentials)
 
         # validate the credentials, raise exception if validation failed
-        model_provider_instance.validate_provider_credentials(credentials)
+        model_provider_instance.validate_provider_credentials(filtered_credentials)
 
-    def model_credentials_validate(self, provider: str, model_type: ModelType,
-                                   model: str, credentials: dict) -> None:
+        return filtered_credentials
+
+    def model_credentials_validate(
+        self, *, provider: str, model_type: ModelType, model: str, credentials: dict
+    ) -> dict:
         """
         Validate model credentials
 
@@ -106,21 +109,28 @@ class ModelProviderFactory:
         # get model_credential_schema and validate credentials according to the rules
         model_credential_schema = provider_schema.model_credential_schema
 
+        if not model_credential_schema:
+            raise ValueError(f"Provider {provider} does not have model_credential_schema")
+
         # validate model credential schema
         validator = ModelCredentialSchemaValidator(model_type, model_credential_schema)
-        validator.validate_and_filter(credentials)
+        filtered_credentials = validator.validate_and_filter(credentials)
 
         # get model instance of the model type
         model_instance = model_provider_instance.get_model_instance(model_type)
 
         # call validate_credentials method of model type to validate credentials, raise exception if validation failed
-        model_instance.validate_credentials(model, credentials)
+        model_instance.validate_credentials(model, filtered_credentials)
 
-    def get_models(self,
-                   provider: Optional[str] = None,
-                   model_type: Optional[ModelType] = None,
-                   provider_configs: Optional[list[ProviderConfig]] = None) \
-            -> list[SimpleProviderEntity]:
+        return filtered_credentials
+
+    def get_models(
+        self,
+        *,
+        provider: Optional[str] = None,
+        model_type: Optional[ModelType] = None,
+        provider_configs: Optional[list[ProviderConfig]] = None,
+    ) -> list[SimpleProviderEntity]:
         """
         Get all models for given model type
 
@@ -129,6 +139,8 @@ class ModelProviderFactory:
         :param provider_configs: list of provider configs
         :return: list of models
         """
+        provider_configs = provider_configs or []
+
         # scan all providers
         model_provider_extensions = self._get_model_provider_map()
 
@@ -185,7 +197,7 @@ class ModelProviderFactory:
         # get the provider extension
         model_provider_extension = model_provider_extensions.get(provider)
         if not model_provider_extension:
-            raise Exception(f'Invalid provider: {provider}')
+            raise Exception(f"Invalid provider: {provider}")
 
         # get the provider instance
         model_provider_instance = model_provider_extension.provider_instance
@@ -193,10 +205,21 @@ class ModelProviderFactory:
         return model_provider_instance
 
     def _get_model_provider_map(self) -> dict[str, ModelProviderExtension]:
+        """
+        Retrieves the model provider map.
+
+        This method retrieves the model provider map, which is a dictionary containing the model provider names as keys
+        and instances of `ModelProviderExtension` as values. The model provider map is used to store information about
+        available model providers.
+
+        Returns:
+            A dictionary containing the model provider map.
+
+        Raises:
+            None.
+        """
         if self.model_provider_extensions:
             return self.model_provider_extensions
-
-        model_providers = {}
 
         # get the path of current classes
         current_path = os.path.abspath(__file__)
@@ -206,60 +229,50 @@ class ModelProviderFactory:
         model_provider_dir_paths = [
             os.path.join(model_providers_path, model_provider_dir)
             for model_provider_dir in os.listdir(model_providers_path)
-            if not model_provider_dir.startswith('__')
-               and os.path.isdir(os.path.join(model_providers_path, model_provider_dir))
+            if not model_provider_dir.startswith("__")
+            and os.path.isdir(os.path.join(model_providers_path, model_provider_dir))
         ]
 
         # get _position.yaml file path
-        position_file_path = os.path.join(model_providers_path, '_position.yaml')
-
-        # read _position.yaml file
-        position_map = {}
-        if os.path.exists(position_file_path):
-            with open(position_file_path, 'r', encoding='utf-8') as f:
-                positions = yaml.safe_load(f)
-                # convert list to dict with key as model provider name, value as index
-                position_map = {position: index for index, position in enumerate(positions)}
+        position_map = get_provider_position_map(model_providers_path)
 
         # traverse all model_provider_dir_paths
+        model_providers: list[ModelProviderExtension] = []
         for model_provider_dir_path in model_provider_dir_paths:
             # get model_provider dir name
             model_provider_name = os.path.basename(model_provider_dir_path)
 
             file_names = os.listdir(model_provider_dir_path)
 
-            if (model_provider_name + '.py') not in file_names:
+            if (model_provider_name + ".py") not in file_names:
                 logger.warning(f"Missing {model_provider_name}.py file in {model_provider_dir_path}, Skip.")
                 continue
 
             # Dynamic loading {model_provider_name}.py file and find the subclass of ModelProvider
-            py_path = os.path.join(model_provider_dir_path, model_provider_name + '.py')
-            spec = importlib.util.spec_from_file_location(f'core.model_runtime.model_providers.{model_provider_name}.{model_provider_name}', py_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-
-            model_provider_class = None
-            for name, obj in vars(mod).items():
-                if isinstance(obj, type) and issubclass(obj, ModelProvider) and obj != ModelProvider:
-                    model_provider_class = obj
-                    break
+            py_path = os.path.join(model_provider_dir_path, model_provider_name + ".py")
+            model_provider_class = load_single_subclass_from_source(
+                module_name=f"core.model_runtime.model_providers.{model_provider_name}.{model_provider_name}",
+                script_path=py_path,
+                parent_type=ModelProvider,
+            )
 
             if not model_provider_class:
                 logger.warning(f"Missing Model Provider Class that extends ModelProvider in {py_path}, Skip.")
                 continue
 
-            if f'{model_provider_name}.yaml' not in file_names:
+            if f"{model_provider_name}.yaml" not in file_names:
                 logger.warning(f"Missing {model_provider_name}.yaml file in {model_provider_dir_path}, Skip.")
                 continue
 
-            model_providers[model_provider_name] = ModelProviderExtension(
-                name=model_provider_name,
-                provider_instance=model_provider_class(),
-                position=position_map.get(model_provider_name)
+            model_providers.append(
+                ModelProviderExtension(
+                    name=model_provider_name,
+                    provider_instance=model_provider_class(),
+                    position=position_map.get(model_provider_name),
+                )
             )
 
-        sorted_items = sorted(model_providers.items(), key=lambda x: (x[1].position is None, x[1].position))
-        sorted_extensions = OrderedDict(sorted_items)
+        sorted_extensions = sort_to_dict_by_position_map(position_map, model_providers, lambda x: x.name)
 
         self.model_provider_extensions = sorted_extensions
 

@@ -4,12 +4,13 @@ import SystemModelSelector from './system-model-selector'
 import ProviderAddedCard, { UPDATE_MODEL_PROVIDER_CUSTOM_MODEL_LIST } from './provider-added-card'
 import ProviderCard from './provider-card'
 import type {
-  CustomConfigrationModelFixedFields,
+  CustomConfigurationModelFixedFields,
   ModelProvider,
 } from './declarations'
 import {
-  ConfigurateMethodEnum,
+  ConfigurationMethodEnum,
   CustomConfigurationStatusEnum,
+  ModelTypeEnum,
 } from './declarations'
 import {
   useDefaultModel,
@@ -18,7 +19,7 @@ import {
 } from './hooks'
 import { AlertTriangle } from '@/app/components/base/icons/src/vender/solid/alertsAndFeedback'
 import { useProviderContext } from '@/context/provider-context'
-import { useModalContext } from '@/context/modal-context'
+import { useModalContextSelector } from '@/context/modal-context'
 import { useEventEmitterContextContext } from '@/context/event-emitter'
 
 const ModelProviderPage = () => {
@@ -26,55 +27,62 @@ const ModelProviderPage = () => {
   const { eventEmitter } = useEventEmitterContextContext()
   const updateModelProviders = useUpdateModelProviders()
   const updateModelList = useUpdateModelList()
-  const { data: textGenerationDefaultModel } = useDefaultModel(1)
-  const { data: embeddingsDefaultModel } = useDefaultModel(2)
-  const { data: rerankDefaultModel } = useDefaultModel(3)
-  const { data: speech2textDefaultModel } = useDefaultModel(4)
+  const { data: textGenerationDefaultModel } = useDefaultModel(ModelTypeEnum.textGeneration)
+  const { data: embeddingsDefaultModel } = useDefaultModel(ModelTypeEnum.textEmbedding)
+  const { data: rerankDefaultModel } = useDefaultModel(ModelTypeEnum.rerank)
+  const { data: speech2textDefaultModel } = useDefaultModel(ModelTypeEnum.speech2text)
+  const { data: ttsDefaultModel } = useDefaultModel(ModelTypeEnum.tts)
   const { modelProviders: providers } = useProviderContext()
-  const { setShowModelModal } = useModalContext()
-  const defaultModelNotConfigured = !textGenerationDefaultModel && !embeddingsDefaultModel && !speech2textDefaultModel && !rerankDefaultModel
-  const [configedProviders, notConfigedProviders] = useMemo(() => {
-    const configedProviders: ModelProvider[] = []
-    const notConfigedProviders: ModelProvider[] = []
+  const setShowModelModal = useModalContextSelector(state => state.setShowModelModal)
+  const defaultModelNotConfigured = !textGenerationDefaultModel && !embeddingsDefaultModel && !speech2textDefaultModel && !rerankDefaultModel && !ttsDefaultModel
+  const [configuredProviders, notConfiguredProviders] = useMemo(() => {
+    const configuredProviders: ModelProvider[] = []
+    const notConfiguredProviders: ModelProvider[] = []
 
     providers.forEach((provider) => {
-      if (provider.custom_configuration.status === CustomConfigurationStatusEnum.active || provider.system_configuration.enabled === true)
-        configedProviders.push(provider)
+      if (
+        provider.custom_configuration.status === CustomConfigurationStatusEnum.active
+        || (
+          provider.system_configuration.enabled === true
+          && provider.system_configuration.quota_configurations.find(item => item.quota_type === provider.system_configuration.current_quota_type)
+        )
+      )
+        configuredProviders.push(provider)
       else
-        notConfigedProviders.push(provider)
+        notConfiguredProviders.push(provider)
     })
 
-    return [configedProviders, notConfigedProviders]
+    return [configuredProviders, notConfiguredProviders]
   }, [providers])
 
   const handleOpenModal = (
     provider: ModelProvider,
-    configurateMethod: ConfigurateMethodEnum,
-    customConfigrationModelFixedFields?: CustomConfigrationModelFixedFields,
+    configurateMethod: ConfigurationMethodEnum,
+    CustomConfigurationModelFixedFields?: CustomConfigurationModelFixedFields,
   ) => {
     setShowModelModal({
       payload: {
         currentProvider: provider,
-        currentConfigurateMethod: configurateMethod,
-        currentCustomConfigrationModelFixedFields: customConfigrationModelFixedFields,
+        currentConfigurationMethod: configurateMethod,
+        currentCustomConfigurationModelFixedFields: CustomConfigurationModelFixedFields,
       },
       onSaveCallback: () => {
         updateModelProviders()
 
-        if (configurateMethod === ConfigurateMethodEnum.predefinedModel) {
+        if (configurateMethod === ConfigurationMethodEnum.predefinedModel) {
           provider.supported_model_types.forEach((type) => {
             updateModelList(type)
           })
         }
 
-        if (configurateMethod === ConfigurateMethodEnum.customizableModel && provider.custom_configuration.status === CustomConfigurationStatusEnum.active) {
+        if (configurateMethod === ConfigurationMethodEnum.customizableModel && provider.custom_configuration.status === CustomConfigurationStatusEnum.active) {
           eventEmitter?.emit({
             type: UPDATE_MODEL_PROVIDER_CUSTOM_MODEL_LIST,
             payload: provider.provider,
           } as any)
 
-          if (customConfigrationModelFixedFields?.__model_type)
-            updateModelList(customConfigrationModelFixedFields?.__model_type)
+          if (CustomConfigurationModelFixedFields?.__model_type)
+            updateModelList(CustomConfigurationModelFixedFields?.__model_type)
         }
       },
     })
@@ -98,17 +106,18 @@ const ModelProviderPage = () => {
           embeddingsDefaultModel={embeddingsDefaultModel}
           rerankDefaultModel={rerankDefaultModel}
           speech2textDefaultModel={speech2textDefaultModel}
+          ttsDefaultModel={ttsDefaultModel}
         />
       </div>
       {
-        !!configedProviders?.length && (
+        !!configuredProviders?.length && (
           <div className='pb-3'>
             {
-              configedProviders?.map(provider => (
+              configuredProviders?.map(provider => (
                 <ProviderAddedCard
                   key={provider.provider}
                   provider={provider}
-                  onOpenModal={(configurateMethod: ConfigurateMethodEnum, currentCustomConfigrationModelFixedFields?: CustomConfigrationModelFixedFields) => handleOpenModal(provider, configurateMethod, currentCustomConfigrationModelFixedFields)}
+                  onOpenModal={(configurateMethod: ConfigurationMethodEnum, currentCustomConfigurationModelFixedFields?: CustomConfigurationModelFixedFields) => handleOpenModal(provider, configurateMethod, currentCustomConfigurationModelFixedFields)}
                 />
               ))
             }
@@ -116,7 +125,7 @@ const ModelProviderPage = () => {
         )
       }
       {
-        !!notConfigedProviders?.length && (
+        !!notConfiguredProviders?.length && (
           <>
             <div className='flex items-center mb-2 text-xs font-semibold text-gray-500'>
               + {t('common.modelProvider.addMoreModelProvider')}
@@ -124,11 +133,11 @@ const ModelProviderPage = () => {
             </div>
             <div className='grid grid-cols-3 gap-2'>
               {
-                notConfigedProviders?.map(provider => (
+                notConfiguredProviders?.map(provider => (
                   <ProviderCard
                     key={provider.provider}
                     provider={provider}
-                    onOpenModal={(configurateMethod: ConfigurateMethodEnum) => handleOpenModal(provider, configurateMethod)}
+                    onOpenModal={(configurateMethod: ConfigurationMethodEnum) => handleOpenModal(provider, configurateMethod)}
                   />
                 ))
               }

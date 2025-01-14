@@ -1,9 +1,9 @@
-import os
 from typing import Optional
 
 from flask import Flask
 from pydantic import BaseModel
 
+from configs import dify_config
 from core.entities.provider_entities import QuotaUnit, RestrictModel
 from core.model_runtime.entities.model_entities import ModelType
 from models.provider import ProviderQuotaType
@@ -22,10 +22,6 @@ class TrialHostingQuota(HostingQuota):
 
 class PaidHostingQuota(HostingQuota):
     quota_type: ProviderQuotaType = ProviderQuotaType.PAID
-    stripe_price_id: str = None
-    increase_quota: int = 1
-    min_quantity: int = 20
-    max_quantity: int = 100
 
 
 class FreeHostingQuota(HostingQuota):
@@ -46,10 +42,10 @@ class HostedModerationConfig(BaseModel):
 
 class HostingConfiguration:
     provider_map: dict[str, HostingProvider] = {}
-    moderation_config: HostedModerationConfig = None
+    moderation_config: Optional[HostedModerationConfig] = None
 
     def init_app(self, app: Flask) -> None:
-        if app.config.get('EDITION') != 'CLOUD':
+        if dify_config.EDITION != "CLOUD":
             return
 
         self.provider_map["azure_openai"] = self.init_azure_openai()
@@ -61,41 +57,64 @@ class HostingConfiguration:
 
         self.moderation_config = self.init_moderation_config()
 
-    def init_azure_openai(self) -> HostingProvider:
+    @staticmethod
+    def init_azure_openai() -> HostingProvider:
         quota_unit = QuotaUnit.TIMES
-        if os.environ.get("HOSTED_AZURE_OPENAI_ENABLED") and os.environ.get("HOSTED_AZURE_OPENAI_ENABLED").lower() == 'true':
+        if dify_config.HOSTED_AZURE_OPENAI_ENABLED:
             credentials = {
-                "openai_api_key": os.environ.get("HOSTED_AZURE_OPENAI_API_KEY"),
-                "openai_api_base": os.environ.get("HOSTED_AZURE_OPENAI_API_BASE"),
-                "base_model_name": "gpt-35-turbo"
+                "openai_api_key": dify_config.HOSTED_AZURE_OPENAI_API_KEY,
+                "openai_api_base": dify_config.HOSTED_AZURE_OPENAI_API_BASE,
+                "base_model_name": "gpt-35-turbo",
             }
 
-            quotas = []
-            hosted_quota_limit = int(os.environ.get("HOSTED_AZURE_OPENAI_QUOTA_LIMIT", "1000"))
-            if hosted_quota_limit != -1 or hosted_quota_limit > 0:
-                trial_quota = TrialHostingQuota(
-                    quota_limit=hosted_quota_limit,
-                    restrict_models=[
-                        RestrictModel(model="gpt-4", base_model_name="gpt-4", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-4-32k", base_model_name="gpt-4-32k", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-4-1106-preview", base_model_name="gpt-4-1106-preview", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-4-vision-preview", base_model_name="gpt-4-vision-preview", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-35-turbo", base_model_name="gpt-35-turbo", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-35-turbo-1106", base_model_name="gpt-35-turbo-1106", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-35-turbo-instruct", base_model_name="gpt-35-turbo-instruct", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-35-turbo-16k", base_model_name="gpt-35-turbo-16k", model_type=ModelType.LLM),
-                        RestrictModel(model="text-davinci-003", base_model_name="text-davinci-003", model_type=ModelType.LLM),
-                        RestrictModel(model="text-embedding-ada-002", base_model_name="text-embedding-ada-002", model_type=ModelType.TEXT_EMBEDDING),
-                    ]
-                )
-                quotas.append(trial_quota)
-
-            return HostingProvider(
-                enabled=True,
-                credentials=credentials,
-                quota_unit=quota_unit,
-                quotas=quotas
+            quotas: list[HostingQuota] = []
+            hosted_quota_limit = dify_config.HOSTED_AZURE_OPENAI_QUOTA_LIMIT
+            trial_quota = TrialHostingQuota(
+                quota_limit=hosted_quota_limit,
+                restrict_models=[
+                    RestrictModel(model="gpt-4", base_model_name="gpt-4", model_type=ModelType.LLM),
+                    RestrictModel(model="gpt-4o", base_model_name="gpt-4o", model_type=ModelType.LLM),
+                    RestrictModel(model="gpt-4o-mini", base_model_name="gpt-4o-mini", model_type=ModelType.LLM),
+                    RestrictModel(model="gpt-4-32k", base_model_name="gpt-4-32k", model_type=ModelType.LLM),
+                    RestrictModel(
+                        model="gpt-4-1106-preview", base_model_name="gpt-4-1106-preview", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(
+                        model="gpt-4-vision-preview", base_model_name="gpt-4-vision-preview", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(model="gpt-35-turbo", base_model_name="gpt-35-turbo", model_type=ModelType.LLM),
+                    RestrictModel(
+                        model="gpt-35-turbo-1106", base_model_name="gpt-35-turbo-1106", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(
+                        model="gpt-35-turbo-instruct", base_model_name="gpt-35-turbo-instruct", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(
+                        model="gpt-35-turbo-16k", base_model_name="gpt-35-turbo-16k", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(
+                        model="text-davinci-003", base_model_name="text-davinci-003", model_type=ModelType.LLM
+                    ),
+                    RestrictModel(
+                        model="text-embedding-ada-002",
+                        base_model_name="text-embedding-ada-002",
+                        model_type=ModelType.TEXT_EMBEDDING,
+                    ),
+                    RestrictModel(
+                        model="text-embedding-3-small",
+                        base_model_name="text-embedding-3-small",
+                        model_type=ModelType.TEXT_EMBEDDING,
+                    ),
+                    RestrictModel(
+                        model="text-embedding-3-large",
+                        base_model_name="text-embedding-3-large",
+                        model_type=ModelType.TEXT_EMBEDDING,
+                    ),
+                ],
             )
+            quotas.append(trial_quota)
+
+            return HostingProvider(enabled=True, credentials=credentials, quota_unit=quota_unit, quotas=quotas)
 
         return HostingProvider(
             enabled=False,
@@ -103,105 +122,78 @@ class HostingConfiguration:
         )
 
     def init_openai(self) -> HostingProvider:
-        quota_unit = QuotaUnit.TIMES
-        if os.environ.get("HOSTED_OPENAI_ENABLED") and os.environ.get("HOSTED_OPENAI_ENABLED").lower() == 'true':
+        quota_unit = QuotaUnit.CREDITS
+        quotas: list[HostingQuota] = []
+
+        if dify_config.HOSTED_OPENAI_TRIAL_ENABLED:
+            hosted_quota_limit = dify_config.HOSTED_OPENAI_QUOTA_LIMIT
+            trial_models = self.parse_restrict_models_from_env("HOSTED_OPENAI_TRIAL_MODELS")
+            trial_quota = TrialHostingQuota(quota_limit=hosted_quota_limit, restrict_models=trial_models)
+            quotas.append(trial_quota)
+
+        if dify_config.HOSTED_OPENAI_PAID_ENABLED:
+            paid_models = self.parse_restrict_models_from_env("HOSTED_OPENAI_PAID_MODELS")
+            paid_quota = PaidHostingQuota(restrict_models=paid_models)
+            quotas.append(paid_quota)
+
+        if len(quotas) > 0:
             credentials = {
-                "openai_api_key": os.environ.get("HOSTED_OPENAI_API_KEY"),
+                "openai_api_key": dify_config.HOSTED_OPENAI_API_KEY,
             }
 
-            if os.environ.get("HOSTED_OPENAI_API_BASE"):
-                credentials["openai_api_base"] = os.environ.get("HOSTED_OPENAI_API_BASE")
+            if dify_config.HOSTED_OPENAI_API_BASE:
+                credentials["openai_api_base"] = dify_config.HOSTED_OPENAI_API_BASE
 
-            if os.environ.get("HOSTED_OPENAI_API_ORGANIZATION"):
-                credentials["openai_organization"] = os.environ.get("HOSTED_OPENAI_API_ORGANIZATION")
+            if dify_config.HOSTED_OPENAI_API_ORGANIZATION:
+                credentials["openai_organization"] = dify_config.HOSTED_OPENAI_API_ORGANIZATION
 
-            quotas = []
-            hosted_quota_limit = int(os.environ.get("HOSTED_OPENAI_QUOTA_LIMIT", "200"))
-            if hosted_quota_limit != -1 or hosted_quota_limit > 0:
-                trial_quota = TrialHostingQuota(
-                    quota_limit=hosted_quota_limit,
-                    restrict_models=[
-                        RestrictModel(model="gpt-3.5-turbo", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-3.5-turbo-1106", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-3.5-turbo-instruct", model_type=ModelType.LLM),
-                        RestrictModel(model="gpt-3.5-turbo-16k", model_type=ModelType.LLM),
-                        RestrictModel(model="text-davinci-003", model_type=ModelType.LLM),
-                    ]
-                )
-                quotas.append(trial_quota)
-
-            if os.environ.get("HOSTED_OPENAI_PAID_ENABLED") and os.environ.get(
-                    "HOSTED_OPENAI_PAID_ENABLED").lower() == 'true':
-                paid_quota = PaidHostingQuota(
-                    stripe_price_id=os.environ.get("HOSTED_OPENAI_PAID_STRIPE_PRICE_ID"),
-                    increase_quota=int(os.environ.get("HOSTED_OPENAI_PAID_INCREASE_QUOTA", "1")),
-                    min_quantity=int(os.environ.get("HOSTED_OPENAI_PAID_MIN_QUANTITY", "1")),
-                    max_quantity=int(os.environ.get("HOSTED_OPENAI_PAID_MAX_QUANTITY", "1"))
-                )
-                quotas.append(paid_quota)
-
-            return HostingProvider(
-                enabled=True,
-                credentials=credentials,
-                quota_unit=quota_unit,
-                quotas=quotas
-            )
+            return HostingProvider(enabled=True, credentials=credentials, quota_unit=quota_unit, quotas=quotas)
 
         return HostingProvider(
             enabled=False,
             quota_unit=quota_unit,
         )
 
-    def init_anthropic(self) -> HostingProvider:
+    @staticmethod
+    def init_anthropic() -> HostingProvider:
         quota_unit = QuotaUnit.TOKENS
-        if os.environ.get("HOSTED_ANTHROPIC_ENABLED") and os.environ.get("HOSTED_ANTHROPIC_ENABLED").lower() == 'true':
+        quotas: list[HostingQuota] = []
+
+        if dify_config.HOSTED_ANTHROPIC_TRIAL_ENABLED:
+            hosted_quota_limit = dify_config.HOSTED_ANTHROPIC_QUOTA_LIMIT
+            trial_quota = TrialHostingQuota(quota_limit=hosted_quota_limit)
+            quotas.append(trial_quota)
+
+        if dify_config.HOSTED_ANTHROPIC_PAID_ENABLED:
+            paid_quota = PaidHostingQuota()
+            quotas.append(paid_quota)
+
+        if len(quotas) > 0:
             credentials = {
-                "anthropic_api_key": os.environ.get("HOSTED_ANTHROPIC_API_KEY"),
+                "anthropic_api_key": dify_config.HOSTED_ANTHROPIC_API_KEY,
             }
 
-            if os.environ.get("HOSTED_ANTHROPIC_API_BASE"):
-                credentials["anthropic_api_url"] = os.environ.get("HOSTED_ANTHROPIC_API_BASE")
+            if dify_config.HOSTED_ANTHROPIC_API_BASE:
+                credentials["anthropic_api_url"] = dify_config.HOSTED_ANTHROPIC_API_BASE
 
-            quotas = []
-            hosted_quota_limit = int(os.environ.get("HOSTED_ANTHROPIC_QUOTA_LIMIT", "0"))
-            if hosted_quota_limit != -1 or hosted_quota_limit > 0:
-                trial_quota = TrialHostingQuota(
-                    quota_limit=hosted_quota_limit
-                )
-                quotas.append(trial_quota)
-
-            if os.environ.get("HOSTED_ANTHROPIC_PAID_ENABLED") and os.environ.get(
-                    "HOSTED_ANTHROPIC_PAID_ENABLED").lower() == 'true':
-                paid_quota = PaidHostingQuota(
-                    stripe_price_id=os.environ.get("HOSTED_ANTHROPIC_PAID_STRIPE_PRICE_ID"),
-                    increase_quota=int(os.environ.get("HOSTED_ANTHROPIC_PAID_INCREASE_QUOTA", "1000000")),
-                    min_quantity=int(os.environ.get("HOSTED_ANTHROPIC_PAID_MIN_QUANTITY", "20")),
-                    max_quantity=int(os.environ.get("HOSTED_ANTHROPIC_PAID_MAX_QUANTITY", "100"))
-                )
-                quotas.append(paid_quota)
-
-            return HostingProvider(
-                enabled=True,
-                credentials=credentials,
-                quota_unit=quota_unit,
-                quotas=quotas
-            )
+            return HostingProvider(enabled=True, credentials=credentials, quota_unit=quota_unit, quotas=quotas)
 
         return HostingProvider(
             enabled=False,
             quota_unit=quota_unit,
         )
 
-    def init_minimax(self) -> HostingProvider:
+    @staticmethod
+    def init_minimax() -> HostingProvider:
         quota_unit = QuotaUnit.TOKENS
-        if os.environ.get("HOSTED_MINIMAX_ENABLED") and os.environ.get("HOSTED_MINIMAX_ENABLED").lower() == 'true':
-            quotas = [FreeHostingQuota()]
+        if dify_config.HOSTED_MINIMAX_ENABLED:
+            quotas: list[HostingQuota] = [FreeHostingQuota()]
 
             return HostingProvider(
                 enabled=True,
                 credentials=None,  # use credentials from the provider
                 quota_unit=quota_unit,
-                quotas=quotas
+                quotas=quotas,
             )
 
         return HostingProvider(
@@ -209,16 +201,17 @@ class HostingConfiguration:
             quota_unit=quota_unit,
         )
 
-    def init_spark(self) -> HostingProvider:
+    @staticmethod
+    def init_spark() -> HostingProvider:
         quota_unit = QuotaUnit.TOKENS
-        if os.environ.get("HOSTED_SPARK_ENABLED") and os.environ.get("HOSTED_SPARK_ENABLED").lower() == 'true':
-            quotas = [FreeHostingQuota()]
+        if dify_config.HOSTED_SPARK_ENABLED:
+            quotas: list[HostingQuota] = [FreeHostingQuota()]
 
             return HostingProvider(
                 enabled=True,
                 credentials=None,  # use credentials from the provider
                 quota_unit=quota_unit,
-                quotas=quotas
+                quotas=quotas,
             )
 
         return HostingProvider(
@@ -226,16 +219,17 @@ class HostingConfiguration:
             quota_unit=quota_unit,
         )
 
-    def init_zhipuai(self) -> HostingProvider:
+    @staticmethod
+    def init_zhipuai() -> HostingProvider:
         quota_unit = QuotaUnit.TOKENS
-        if os.environ.get("HOSTED_ZHIPUAI_ENABLED") and os.environ.get("HOSTED_ZHIPUAI_ENABLED").lower() == 'true':
-            quotas = [FreeHostingQuota()]
+        if dify_config.HOSTED_ZHIPUAI_ENABLED:
+            quotas: list[HostingQuota] = [FreeHostingQuota()]
 
             return HostingProvider(
                 enabled=True,
                 credentials=None,  # use credentials from the provider
                 quota_unit=quota_unit,
-                quotas=quotas
+                quotas=quotas,
             )
 
         return HostingProvider(
@@ -243,14 +237,19 @@ class HostingConfiguration:
             quota_unit=quota_unit,
         )
 
-    def init_moderation_config(self) -> HostedModerationConfig:
-        if os.environ.get("HOSTED_MODERATION_ENABLED") and os.environ.get("HOSTED_MODERATION_ENABLED").lower() == 'true' \
-                and os.environ.get("HOSTED_MODERATION_PROVIDERS"):
-            return HostedModerationConfig(
-                enabled=True,
-                providers=os.environ.get("HOSTED_MODERATION_PROVIDERS").split(',')
-            )
+    @staticmethod
+    def init_moderation_config() -> HostedModerationConfig:
+        if dify_config.HOSTED_MODERATION_ENABLED and dify_config.HOSTED_MODERATION_PROVIDERS:
+            return HostedModerationConfig(enabled=True, providers=dify_config.HOSTED_MODERATION_PROVIDERS.split(","))
 
-        return HostedModerationConfig(
-            enabled=False
-        )
+        return HostedModerationConfig(enabled=False)
+
+    @staticmethod
+    def parse_restrict_models_from_env(env_var: str) -> list[RestrictModel]:
+        models_str = dify_config.model_dump().get(env_var)
+        models_list = models_str.split(",") if models_str else []
+        return [
+            RestrictModel(model=model_name.strip(), model_type=ModelType.LLM)
+            for model_name in models_list
+            if model_name.strip()
+        ]

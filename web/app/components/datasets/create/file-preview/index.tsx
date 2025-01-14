@@ -1,9 +1,9 @@
 'use client'
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import cn from 'classnames'
 import { XMarkIcon } from '@heroicons/react/20/solid'
 import s from './index.module.css'
+import cn from '@/utils/classnames'
 import type { CustomFile as File } from '@/models/datasets'
 import { fetchFilePreview } from '@/service/common'
 
@@ -26,7 +26,7 @@ const FilePreview = ({
       setPreviewContent(res.content)
       setLoading(false)
     }
-    catch {}
+    catch { }
   }
 
   const getFileName = (currentFile?: File) => {
@@ -44,7 +44,7 @@ const FilePreview = ({
   }, [file])
 
   return (
-    <div className={cn(s.filePreview)}>
+    <div className={cn(s.filePreview, 'h-full')}>
       <div className={cn(s.previewHeader)}>
         <div className={cn(s.title)}>
           <span>{t('datasetCreation.stepOne.filePreview')}</span>
@@ -57,9 +57,9 @@ const FilePreview = ({
         </div>
       </div>
       <div className={cn(s.previewContent)}>
-        {loading && <div className={cn(s.loading)}/>}
+        {loading && <div className={cn(s.loading)} />}
         {!loading && (
-          <div className={cn(s.fileContent)}>{previewContent}</div>
+          <div className={cn(s.fileContent, 'body-md-regular')}>{previewContent}</div>
         )}
       </div>
     </div>

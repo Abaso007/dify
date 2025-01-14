@@ -1,13 +1,13 @@
 'use client'
-import type { FC } from 'react'
+import type { FC, ReactNode } from 'react'
 import React, { useEffect, useState } from 'react'
 import { PencilIcon } from '@heroicons/react/24/outline'
 import { useTranslation } from 'react-i18next'
 import { useContext } from 'use-context-selector'
 import { get } from 'lodash-es'
-import cn from 'classnames'
-import { DocumentContext } from '../index'
+import { useDocumentContext } from '../index'
 import s from './style.module.css'
+import cn from '@/utils/classnames'
 import Input from '@/app/components/base/input'
 import Button from '@/app/components/base/button'
 import Tooltip from '@/app/components/base/tooltip'
@@ -32,6 +32,7 @@ const map2Options = (map: { [key: string]: string }) => {
 type IFieldInfoProps = {
   label: string
   value?: string
+  valueIcon?: ReactNode
   displayedValue?: string
   defaultValue?: string
   showEdit?: boolean
@@ -43,6 +44,7 @@ type IFieldInfoProps = {
 export const FieldInfo: FC<IFieldInfoProps> = ({
   label,
   value = '',
+  valueIcon,
   displayedValue = '',
   defaultValue,
   showEdit = false,
@@ -56,9 +58,10 @@ export const FieldInfo: FC<IFieldInfoProps> = ({
   const readAlignTop = !showEdit && textNeedWrap
 
   return (
-    <div className={cn(s.fieldInfo, editAlignTop && '!items-start', readAlignTop && '!items-start pt-1')}>
-      <div className={cn(s.label, editAlignTop && 'pt-1')}>{label}</div>
-      <div className={s.value}>
+    <div className={cn('flex items-center gap-1 py-0.5 min-h-5 text-xs', editAlignTop && '!items-start', readAlignTop && '!items-start pt-1')}>
+      <div className={cn('w-[200px] text-text-tertiary overflow-hidden text-ellipsis whitespace-nowrap shrink-0', editAlignTop && 'pt-1')}>{label}</div>
+      <div className="grow flex items-center gap-1 text-text-secondary">
+        {valueIcon}
         {!showEdit
           ? displayedValue
           : inputType === 'select'
@@ -78,8 +81,7 @@ export const FieldInfo: FC<IFieldInfoProps> = ({
                 placeholder={`${t('datasetDocuments.metadata.placeholder.add')}${label}`}
               />
               : <Input
-                className={s.input}
-                onChange={onUpdate}
+                onChange={e => onUpdate?.(e.target.value)}
                 value={value}
                 defaultValue={defaultValue}
                 placeholder={`${t('datasetDocuments.metadata.placeholder.add')}${label}`}
@@ -102,7 +104,9 @@ const IconButton: FC<{
   const metadataMap = useMetadataMap()
 
   return (
-    <Tooltip content={metadataMap[type].text} selector={`doc-metadata-${type}`}>
+    <Tooltip
+      popupContent={metadataMap[type].text}
+    >
       <button className={cn(s.iconWrapper, 'group', isChecked ? s.iconCheck : '')}>
         <TypeIcon
           iconName={metadataMap[type].iconName || ''}
@@ -146,7 +150,8 @@ const Metadata: FC<IMetadataProps> = ({ docDetail, loading, onUpdate }) => {
   const [saveLoading, setSaveLoading] = useState(false)
 
   const { notify } = useContext(ToastContext)
-  const { datasetId = '', documentId = '' } = useContext(DocumentContext)
+  const datasetId = useDocumentContext(s => s.datasetId)
+  const documentId = useDocumentContext(s => s.documentId)
 
   useEffect(() => {
     if (docDetail?.doc_type) {
@@ -208,7 +213,7 @@ const Metadata: FC<IMetadataProps> = ({ docDetail, loading, onUpdate }) => {
             })}
           </Radio.Group>
           {!doc_type && !documentType && (
-            <Button type='primary'
+            <Button variant='primary'
               onClick={confirmDocType}
               disabled={!tempDocType}
             >
@@ -216,7 +221,7 @@ const Metadata: FC<IMetadataProps> = ({ docDetail, loading, onUpdate }) => {
             </Button>
           )}
           {documentType && <div className={s.opBtnWrapper}>
-            <Button onClick={confirmDocType} className={`${s.opBtn} ${s.opSaveBtn}`} type='primary' >{t('common.operation.save')}</Button>
+            <Button onClick={confirmDocType} className={`${s.opBtn} ${s.opSaveBtn}`} variant='primary' >{t('common.operation.save')}</Button>
             <Button onClick={cancelDocType} className={`${s.opBtn} ${s.opCancelBtn}`}>{t('common.operation.cancel')}</Button>
           </div>}
         </div >
@@ -324,7 +329,7 @@ const Metadata: FC<IMetadataProps> = ({ docDetail, loading, onUpdate }) => {
                     <Button onClick={onCancel} className={`${s.opBtn} ${s.opCancelBtn}`}>{t('common.operation.cancel')}</Button>
                     <Button onClick={onSave}
                       className={`${s.opBtn} ${s.opSaveBtn}`}
-                      type='primary'
+                      variant='primary'
                       loading={saveLoading}
                     >
                       {t('common.operation.save')}
@@ -344,10 +349,10 @@ const Metadata: FC<IMetadataProps> = ({ docDetail, loading, onUpdate }) => {
                     <TypeIcon iconName={metadataMap[metadataParams.documentType || 'book'].iconName || ''} className={s.iconShow} />
                     {metadataMap[metadataParams.documentType || 'book'].text}
                     {editStatus && <div className='inline-flex items-center gap-1 ml-1'>
-                    ·
+                      ·
                       <div
                         onClick={() => { setShowDocTypes(true) }}
-                        className='cursor-pointer hover:text-[#155EEF]'
+                        className='cursor-pointer hover:text-text-accent'
                       >
                         {t('common.operation.change')}
                       </div>

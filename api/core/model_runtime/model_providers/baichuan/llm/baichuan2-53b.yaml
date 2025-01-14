@@ -6,7 +6,7 @@ features:
   - agent-thought
 model_properties:
   mode: chat
-  context_size: 4000
+  context_size: 32000
 parameter_rules:
   - name: temperature
     use_template: temperature
@@ -31,6 +31,9 @@ parameter_rules:
     use_template: presence_penalty
   - name: frequency_penalty
     use_template: frequency_penalty
+    default: 1
+    min: 1
+    max: 2
   - name: with_search_enhance
     label:
       zh_Hans: 搜索增强
@@ -40,3 +43,4 @@ parameter_rules:
       zh_Hans: 允许模型自行进行外部搜索，以增强生成结果。
       en_US: Allow the model to perform external search to enhance the generation results.
     required: false
+deprecated: true

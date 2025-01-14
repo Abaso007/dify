@@ -1,15 +1,20 @@
 export type FormValue = Record<string, any>
 
 export type TypeWithI18N<T = string> = {
-  'en_US': T
-  'zh_Hans': T
+  en_US: T
+  zh_Hans: T
+  [key: string]: T
 }
 
 export enum FormTypeEnum {
   textInput = 'text-input',
+  textNumber = 'number-input',
   secretInput = 'secret-input',
   select = 'select',
   radio = 'radio',
+  boolean = 'boolean',
+  files = 'files',
+  file = 'file',
 }
 
 export type FormOption = {
@@ -24,6 +29,7 @@ export enum ModelTypeEnum {
   rerank = 'rerank',
   speech2text = 'speech2text',
   moderation = 'moderation',
+  tts = 'tts',
 }
 
 export const MODEL_TYPE_TEXT = {
@@ -32,9 +38,10 @@ export const MODEL_TYPE_TEXT = {
   [ModelTypeEnum.rerank]: 'Rerank',
   [ModelTypeEnum.speech2text]: 'Speech2text',
   [ModelTypeEnum.moderation]: 'Moderation',
+  [ModelTypeEnum.tts]: 'TTS',
 }
 
-export enum ConfigurateMethodEnum {
+export enum ConfigurationMethodEnum {
   predefinedModel = 'predefined-model',
   customizableModel = 'customizable-model',
   fetchFromRemote = 'fetch-from-remote',
@@ -45,6 +52,9 @@ export enum ModelFeatureEnum {
   multiToolCall = 'multi-tool-call',
   agentThought = 'agent-thought',
   vision = 'vision',
+  video = 'video',
+  document = 'document',
+  audio = 'audio',
 }
 
 export enum ModelFeatureTextEnum {
@@ -52,6 +62,9 @@ export enum ModelFeatureTextEnum {
   multiToolCall = 'Multi Tool Call',
   agentThought = 'Agent Thought',
   vision = 'Vision',
+  video = 'Video',
+  document = 'Document',
+  audio = 'Audio',
 }
 
 export enum ModelStatusEnum {
@@ -59,6 +72,7 @@ export enum ModelStatusEnum {
   noConfigure = 'no-configure',
   quotaExceeded = 'quota-exceeded',
   noPermission = 'no-permission',
+  disabled = 'disabled',
 }
 
 export const MODEL_STATUS_TEXT: { [k: string]: TypeWithI18N } = {
@@ -92,10 +106,13 @@ export type CredentialFormSchemaBase = {
   type: FormTypeEnum
   required: boolean
   default?: string
+  tooltip?: TypeWithI18N
   show_on: FormShowOnObject[]
+  url?: string
 }
 
 export type CredentialFormSchemaTextInput = CredentialFormSchemaBase & { max_length?: number; placeholder?: TypeWithI18N }
+export type CredentialFormSchemaNumberInput = CredentialFormSchemaBase & { min?: number; max?: number; placeholder?: TypeWithI18N }
 export type CredentialFormSchemaSelect = CredentialFormSchemaBase & { options: FormOption[]; placeholder?: TypeWithI18N }
 export type CredentialFormSchemaRadio = CredentialFormSchemaBase & { options: FormOption[] }
 export type CredentialFormSchemaSecretInput = CredentialFormSchemaBase & { placeholder?: TypeWithI18N }
@@ -106,9 +123,10 @@ export type ModelItem = {
   label: TypeWithI18N
   model_type: ModelTypeEnum
   features?: ModelFeatureEnum[]
-  fetch_from: ConfigurateMethodEnum
+  fetch_from: ConfigurationMethodEnum
   status: ModelStatusEnum
   model_properties: Record<string, string | number>
+  load_balancing_enabled: boolean
   deprecated?: boolean
 }
 
@@ -126,6 +144,7 @@ export enum CurrentSystemQuotaTypeEnum {
 export enum QuotaUnitEnum {
   times = 'times',
   tokens = 'tokens',
+  credits = 'credits',
 }
 
 export type QuotaConfiguration = {
@@ -149,7 +168,7 @@ export type ModelProvider = {
   icon_large: TypeWithI18N
   background?: string
   supported_model_types: ModelTypeEnum[]
-  configurate_methods: ConfigurateMethodEnum[]
+  configurate_methods: ConfigurationMethodEnum[]
   provider_credential_schema: {
     credential_form_schemas: CredentialFormSchema[]
   }
@@ -195,7 +214,7 @@ export type DefaultModel = {
   model: string
 }
 
-export type CustomConfigrationModelFixedFields = {
+export type CustomConfigurationModelFixedFields = {
   __model_name: string
   __model_type: ModelTypeEnum
 }
@@ -213,4 +232,24 @@ export type ModelParameterRule = {
   use_template?: string
   options?: string[]
   tagPlaceholder?: TypeWithI18N
+}
+
+export type ModelLoadBalancingConfigEntry = {
+  /** model balancing config entry id */
+  id?: string
+  /** is config entry enabled */
+  enabled?: boolean
+  /** config entry name */
+  name: string
+  /** model balancing credential */
+  credentials: Record<string, string | undefined | boolean>
+  /** is config entry currently removed from Round-robin queue */
+  in_cooldown?: boolean
+  /** cooldown time (in seconds) */
+  ttl?: number
+}
+
+export type ModelLoadBalancingConfig = {
+  enabled: boolean
+  configs: ModelLoadBalancingConfigEntry[]
 }

@@ -48,6 +48,14 @@
   - `max_chunks` (int) 最大分块数量 (模型类型 `text-embedding ` `moderation` 可用)
   - `file_upload_limit` (int) 文件最大上传限制，单位：MB。（模型类型 `speech2text` 可用）
   - `supported_file_extensions` (string)  支持文件扩展格式，如：mp3,mp4（模型类型 `speech2text` 可用）
+  - `default_voice` (string)  缺省音色，必选：alloy,echo,fable,onyx,nova,shimmer（模型类型 `tts` 可用）
+  - `voices` (list)  可选音色列表。
+    - `mode` (string)  音色模型。（模型类型 `tts` 可用）
+    - `name` (string)  音色模型显示名称。（模型类型 `tts` 可用）
+    - `language` (string)  音色模型支持语言。（模型类型 `tts` 可用）
+  - `word_limit` (int)  单次转换字数限制，默认按段落分段（模型类型 `tts` 可用）
+  - `audio_type` (string)  支持音频文件扩展格式，如：mp3,wav（模型类型 `tts` 可用）
+  - `max_workers` (int)  支持文字音频转换并发任务数（模型类型 `tts` 可用）
   - `max_characters_per_chunk` (int) 每块最大字符数 (模型类型  `moderation` 可用)
 - `parameter_rules` (array[[ParameterRule](#ParameterRule)]) [optional] 模型调用参数规则
 - `pricing` ([PriceConfig](#PriceConfig)) [optional] 价格信息
@@ -59,6 +67,7 @@
 - `text-embedding` 文本 Embedding 模型
 - `rerank` Rerank 模型
 - `speech2text` 语音转文字
+- `tts` 文字转语音
 - `moderation` 审查
 
 ### ConfigurateMethod
@@ -78,6 +87,9 @@
 
 - `agent-thought` Agent 推理，一般超过 70B 有思维链能力。
 - `vision` 视觉，即：图像理解。
+- `tool-call` 工具调用
+- `multi-tool-call` 多工具调用
+- `stream-tool-call` 流式工具调用
 
 ### FetchFrom
 
@@ -140,7 +152,7 @@
 
 - `input` (float) 输入单价，即 Prompt 单价
 - `output` (float) 输出单价，即返回内容单价
-- `unit` (float) 价格单位，如：每 100K 的单价为 `0.000001`
+- `unit` (float) 价格单位，如以 1M tokens 计价，则单价对应的单位 token 数为 `0.000001`
 - `currency` (string) 货币单位
 
 ### ProviderCredentialSchema

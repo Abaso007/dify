@@ -3,13 +3,16 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, useRouter } from 'next/navigation'
+import {
+  RiBook2Fill,
+  RiBook2Line,
+} from '@remixicon/react'
 import useSWR from 'swr'
 import useSWRInfinite from 'swr/infinite'
 import { flatten } from 'lodash-es'
 import Nav from '../nav'
+import type { NavItem } from '../nav/nav-selector'
 import { fetchDatasetDetail, fetchDatasets } from '@/service/datasets'
-import { Database01 } from '@/app/components/base/icons/src/vender/line/development'
-import { Database02 } from '@/app/components/base/icons/src/vender/solid/development'
 import type { DataSetListResponse } from '@/models/datasets'
 
 const getKey = (pageIndex: number, previousPageData: DataSetListResponse) => {
@@ -29,7 +32,7 @@ const DatasetNav = () => {
         datasetId,
       }
       : null,
-    apiParams => fetchDatasetDetail(apiParams.datasetId))
+    apiParams => fetchDatasetDetail(apiParams.datasetId as string))
   const { data: datasetsData, setSize } = useSWRInfinite(datasetId ? getKey : () => null, fetchDatasets, { revalidateFirstPage: false, revalidateAll: true })
   const datasetItems = flatten(datasetsData?.map(datasetData => datasetData.data))
 
@@ -39,19 +42,19 @@ const DatasetNav = () => {
 
   return (
     <Nav
-      icon={<Database01 className='w-4 h-4' />}
-      activeIcon={<Database02 className='w-4 h-4' />}
+      icon={<RiBook2Line className='w-4 h-4' />}
+      activeIcon={<RiBook2Fill className='w-4 h-4' />}
       text={t('common.menus.datasets')}
       activeSegment='datasets'
       link='/datasets'
-      curNav={currentDataset}
+      curNav={currentDataset as Omit<NavItem, 'link'>}
       navs={datasetItems.map(dataset => ({
         id: dataset.id,
         name: dataset.name,
-        link: `/datasets/${dataset.id}/documents`,
+        link: dataset.provider === 'external' ? `/datasets/${dataset.id}/hitTesting` : `/datasets/${dataset.id}/documents`,
         icon: dataset.icon,
         icon_background: dataset.icon_background,
-      }))}
+      })) as NavItem[]}
       createText={t('common.menus.newDataset')}
       onCreate={() => router.push('/datasets/create')}
       onLoadmore={handleLoadmore}

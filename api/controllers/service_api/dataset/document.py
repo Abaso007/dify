@@ -1,278 +1,285 @@
 import json
 
 from flask import request
-from flask_restful import reqparse, marshal
-from flask_login import current_user
+from flask_restful import marshal, reqparse  # type: ignore
 from sqlalchemy import desc
 from werkzeug.exceptions import NotFound
 
 import services.dataset_service
+from controllers.common.errors import FilenameNotExistsError
 from controllers.service_api import api
-from controllers.service_api.app.error import ProviderNotInitializeError
-from controllers.service_api.dataset.error import ArchivedDocumentImmutableError, DocumentIndexingError, \
-    NoFileUploadedError, TooManyFilesError
+from controllers.service_api.app.error import (
+    FileTooLargeError,
+    NoFileUploadedError,
+    ProviderNotInitializeError,
+    TooManyFilesError,
+    UnsupportedFileTypeError,
+)
+from controllers.service_api.dataset.error import (
+    ArchivedDocumentImmutableError,
+    DocumentIndexingError,
+)
 from controllers.service_api.wraps import DatasetApiResource, cloud_edition_billing_resource_check
-from libs.login import current_user
 from core.errors.error import ProviderTokenNotInitError
 from extensions.ext_database import db
 from fields.document_fields import document_fields, document_status_fields
+from libs.login import current_user
 from models.dataset import Dataset, Document, DocumentSegment
 from services.dataset_service import DocumentService
+from services.entities.knowledge_entities.knowledge_entities import KnowledgeConfig
 from services.file_service import FileService
 
 
 class DocumentAddByTextApi(DatasetApiResource):
     """Resource for documents."""
 
-    @cloud_edition_billing_resource_check('vector_space', 'dataset')
+    @cloud_edition_billing_resource_check("vector_space", "dataset")
+    @cloud_edition_billing_resource_check("documents", "dataset")
     def post(self, tenant_id, dataset_id):
         """Create document by text."""
         parser = reqparse.RequestParser()
-        parser.add_argument('name', type=str, required=True, nullable=False, location='json')
-        parser.add_argument('text', type=str, required=True, nullable=False, location='json')
-        parser.add_argument('process_rule', type=dict, required=False, nullable=True, location='json')
-        parser.add_argument('original_document_id', type=str, required=False, location='json')
-        parser.add_argument('doc_form', type=str, default='text_model', required=False, nullable=False, location='json')
-        parser.add_argument('doc_language', type=str, default='English', required=False, nullable=False,
-                            location='json')
-        parser.add_argument('indexing_technique', type=str, choices=Dataset.INDEXING_TECHNIQUE_LIST, nullable=False,
-                            location='json')
-        parser.add_argument('retrieval_model', type=dict, required=False, nullable=False,
-                            location='json')
+        parser.add_argument("name", type=str, required=True, nullable=False, location="json")
+        parser.add_argument("text", type=str, required=True, nullable=False, location="json")
+        parser.add_argument("process_rule", type=dict, required=False, nullable=True, location="json")
+        parser.add_argument("original_document_id", type=str, required=False, location="json")
+        parser.add_argument("doc_form", type=str, default="text_model", required=False, nullable=False, location="json")
+        parser.add_argument(
+            "doc_language", type=str, default="English", required=False, nullable=False, location="json"
+        )
+        parser.add_argument(
+            "indexing_technique", type=str, choices=Dataset.INDEXING_TECHNIQUE_LIST, nullable=False, location="json"
+        )
+        parser.add_argument("retrieval_model", type=dict, required=False, nullable=False, location="json")
         args = parser.parse_args()
         dataset_id = str(dataset_id)
         tenant_id = str(tenant_id)
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
 
         if not dataset:
-            raise ValueError('Dataset is not exist.')
+            raise ValueError("Dataset is not exist.")
 
-        if not dataset.indexing_technique and not args['indexing_technique']:
-            raise ValueError('indexing_technique is required.')
+        if not dataset.indexing_technique and not args["indexing_technique"]:
+            raise ValueError("indexing_technique is required.")
 
-        upload_file = FileService.upload_text(args.get('text'), args.get('name'))
+        text = args.get("text")
+        name = args.get("name")
+        if text is None or name is None:
+            raise ValueError("Both 'text' and 'name' must be non-null values.")
+
+        upload_file = FileService.upload_text(text=str(text), text_name=str(name))
         data_source = {
-            'type': 'upload_file',
-            'info_list': {
-                'data_source_type': 'upload_file',
-                'file_info_list': {
-                    'file_ids': [upload_file.id]
-                }
-            }
+            "type": "upload_file",
+            "info_list": {"data_source_type": "upload_file", "file_info_list": {"file_ids": [upload_file.id]}},
         }
-        args['data_source'] = data_source
+        args["data_source"] = data_source
+        knowledge_config = KnowledgeConfig(**args)
         # validate args
-        DocumentService.document_create_args_validate(args)
+        DocumentService.document_create_args_validate(knowledge_config)
 
         try:
             documents, batch = DocumentService.save_document_with_dataset_id(
                 dataset=dataset,
-                document_data=args,
+                knowledge_config=knowledge_config,
                 account=current_user,
-                dataset_process_rule=dataset.latest_process_rule if 'process_rule' not in args else None,
-                created_from='api'
+                dataset_process_rule=dataset.latest_process_rule if "process_rule" not in args else None,
+                created_from="api",
             )
         except ProviderTokenNotInitError as ex:
             raise ProviderNotInitializeError(ex.description)
         document = documents[0]
 
-        documents_and_batch_fields = {
-            'document': marshal(document, document_fields),
-            'batch': batch
-        }
+        documents_and_batch_fields = {"document": marshal(document, document_fields), "batch": batch}
         return documents_and_batch_fields, 200
 
 
 class DocumentUpdateByTextApi(DatasetApiResource):
     """Resource for update documents."""
 
-    @cloud_edition_billing_resource_check('vector_space', 'dataset')
+    @cloud_edition_billing_resource_check("vector_space", "dataset")
     def post(self, tenant_id, dataset_id, document_id):
         """Update document by text."""
         parser = reqparse.RequestParser()
-        parser.add_argument('name', type=str, required=False, nullable=True, location='json')
-        parser.add_argument('text', type=str, required=False, nullable=True, location='json')
-        parser.add_argument('process_rule', type=dict, required=False, nullable=True, location='json')
-        parser.add_argument('doc_form', type=str, default='text_model', required=False, nullable=False, location='json')
-        parser.add_argument('doc_language', type=str, default='English', required=False, nullable=False,
-                            location='json')
-        parser.add_argument('retrieval_model', type=dict, required=False, nullable=False,
-                            location='json')
+        parser.add_argument("name", type=str, required=False, nullable=True, location="json")
+        parser.add_argument("text", type=str, required=False, nullable=True, location="json")
+        parser.add_argument("process_rule", type=dict, required=False, nullable=True, location="json")
+        parser.add_argument("doc_form", type=str, default="text_model", required=False, nullable=False, location="json")
+        parser.add_argument(
+            "doc_language", type=str, default="English", required=False, nullable=False, location="json"
+        )
+        parser.add_argument("retrieval_model", type=dict, required=False, nullable=False, location="json")
         args = parser.parse_args()
         dataset_id = str(dataset_id)
         tenant_id = str(tenant_id)
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
 
         if not dataset:
-            raise ValueError('Dataset is not exist.')
+            raise ValueError("Dataset is not exist.")
 
-        if args['text']:
-            upload_file = FileService.upload_text(args.get('text'), args.get('name'))
+        if args["text"]:
+            text = args.get("text")
+            name = args.get("name")
+            if text is None or name is None:
+                raise ValueError("Both text and name must be strings.")
+            upload_file = FileService.upload_text(text=str(text), text_name=str(name))
             data_source = {
-                'type': 'upload_file',
-                'info_list': {
-                    'data_source_type': 'upload_file',
-                    'file_info_list': {
-                        'file_ids': [upload_file.id]
-                    }
-                }
+                "type": "upload_file",
+                "info_list": {"data_source_type": "upload_file", "file_info_list": {"file_ids": [upload_file.id]}},
             }
-            args['data_source'] = data_source
+            args["data_source"] = data_source
         # validate args
-        args['original_document_id'] = str(document_id)
-        DocumentService.document_create_args_validate(args)
+        args["original_document_id"] = str(document_id)
+        knowledge_config = KnowledgeConfig(**args)
+        DocumentService.document_create_args_validate(knowledge_config)
 
         try:
             documents, batch = DocumentService.save_document_with_dataset_id(
                 dataset=dataset,
-                document_data=args,
+                knowledge_config=knowledge_config,
                 account=current_user,
-                dataset_process_rule=dataset.latest_process_rule if 'process_rule' not in args else None,
-                created_from='api'
+                dataset_process_rule=dataset.latest_process_rule if "process_rule" not in args else None,
+                created_from="api",
             )
         except ProviderTokenNotInitError as ex:
             raise ProviderNotInitializeError(ex.description)
         document = documents[0]
 
-        documents_and_batch_fields = {
-            'document': marshal(document, document_fields),
-            'batch': batch
-        }
+        documents_and_batch_fields = {"document": marshal(document, document_fields), "batch": batch}
         return documents_and_batch_fields, 200
 
 
 class DocumentAddByFileApi(DatasetApiResource):
     """Resource for documents."""
-    @cloud_edition_billing_resource_check('vector_space', 'dataset')
+
+    @cloud_edition_billing_resource_check("vector_space", "dataset")
+    @cloud_edition_billing_resource_check("documents", "dataset")
     def post(self, tenant_id, dataset_id):
         """Create document by upload file."""
         args = {}
-        if 'data' in request.form:
-            args = json.loads(request.form['data'])
-        if 'doc_form' not in args:
-            args['doc_form'] = 'text_model'
-        if 'doc_language' not in args:
-            args['doc_language'] = 'English'
+        if "data" in request.form:
+            args = json.loads(request.form["data"])
+        if "doc_form" not in args:
+            args["doc_form"] = "text_model"
+        if "doc_language" not in args:
+            args["doc_language"] = "English"
         # get dataset info
         dataset_id = str(dataset_id)
         tenant_id = str(tenant_id)
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
 
         if not dataset:
-            raise ValueError('Dataset is not exist.')
-        if not dataset.indexing_technique and not args['indexing_technique']:
-            raise ValueError('indexing_technique is required.')
+            raise ValueError("Dataset is not exist.")
+        if not dataset.indexing_technique and not args.get("indexing_technique"):
+            raise ValueError("indexing_technique is required.")
 
         # save file info
-        file = request.files['file']
+        file = request.files["file"]
         # check file
-        if 'file' not in request.files:
+        if "file" not in request.files:
             raise NoFileUploadedError()
 
         if len(request.files) > 1:
             raise TooManyFilesError()
 
-        upload_file = FileService.upload_file(file, current_user)
+        if not file.filename:
+            raise FilenameNotExistsError
+
+        upload_file = FileService.upload_file(
+            filename=file.filename,
+            content=file.read(),
+            mimetype=file.mimetype,
+            user=current_user,
+            source="datasets",
+        )
         data_source = {
-            'type': 'upload_file',
-            'info_list': {
-                'file_info_list': {
-                    'file_ids': [upload_file.id]
-                }
-            }
+            "type": "upload_file",
+            "info_list": {"data_source_type": "upload_file", "file_info_list": {"file_ids": [upload_file.id]}},
         }
-        args['data_source'] = data_source
+        args["data_source"] = data_source
         # validate args
-        DocumentService.document_create_args_validate(args)
+        knowledge_config = KnowledgeConfig(**args)
+        DocumentService.document_create_args_validate(knowledge_config)
 
         try:
             documents, batch = DocumentService.save_document_with_dataset_id(
                 dataset=dataset,
-                document_data=args,
+                knowledge_config=knowledge_config,
                 account=dataset.created_by_account,
-                dataset_process_rule=dataset.latest_process_rule if 'process_rule' not in args else None,
-                created_from='api'
+                dataset_process_rule=dataset.latest_process_rule if "process_rule" not in args else None,
+                created_from="api",
             )
         except ProviderTokenNotInitError as ex:
             raise ProviderNotInitializeError(ex.description)
         document = documents[0]
-        documents_and_batch_fields = {
-            'document': marshal(document, document_fields),
-            'batch': batch
-        }
+        documents_and_batch_fields = {"document": marshal(document, document_fields), "batch": batch}
         return documents_and_batch_fields, 200
 
 
 class DocumentUpdateByFileApi(DatasetApiResource):
     """Resource for update documents."""
 
-    @cloud_edition_billing_resource_check('vector_space', 'dataset')
+    @cloud_edition_billing_resource_check("vector_space", "dataset")
     def post(self, tenant_id, dataset_id, document_id):
         """Update document by upload file."""
         args = {}
-        if 'data' in request.form:
-            args = json.loads(request.form['data'])
-        if 'doc_form' not in args:
-            args['doc_form'] = 'text_model'
-        if 'doc_language' not in args:
-            args['doc_language'] = 'English'
+        if "data" in request.form:
+            args = json.loads(request.form["data"])
+        if "doc_form" not in args:
+            args["doc_form"] = "text_model"
+        if "doc_language" not in args:
+            args["doc_language"] = "English"
 
         # get dataset info
         dataset_id = str(dataset_id)
         tenant_id = str(tenant_id)
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
 
         if not dataset:
-            raise ValueError('Dataset is not exist.')
-        if 'file' in request.files:
+            raise ValueError("Dataset is not exist.")
+        if "file" in request.files:
             # save file info
-            file = request.files['file']
-
+            file = request.files["file"]
 
             if len(request.files) > 1:
                 raise TooManyFilesError()
 
-            upload_file = FileService.upload_file(file, current_user)
+            if not file.filename:
+                raise FilenameNotExistsError
+
+            try:
+                upload_file = FileService.upload_file(
+                    filename=file.filename,
+                    content=file.read(),
+                    mimetype=file.mimetype,
+                    user=current_user,
+                    source="datasets",
+                )
+            except services.errors.file.FileTooLargeError as file_too_large_error:
+                raise FileTooLargeError(file_too_large_error.description)
+            except services.errors.file.UnsupportedFileTypeError:
+                raise UnsupportedFileTypeError()
             data_source = {
-                'type': 'upload_file',
-                'info_list': {
-                    'file_info_list': {
-                        'file_ids': [upload_file.id]
-                    }
-                }
+                "type": "upload_file",
+                "info_list": {"data_source_type": "upload_file", "file_info_list": {"file_ids": [upload_file.id]}},
             }
-            args['data_source'] = data_source
+            args["data_source"] = data_source
         # validate args
-        args['original_document_id'] = str(document_id)
-        DocumentService.document_create_args_validate(args)
+        args["original_document_id"] = str(document_id)
+
+        knowledge_config = KnowledgeConfig(**args)
+        DocumentService.document_create_args_validate(knowledge_config)
 
         try:
             documents, batch = DocumentService.save_document_with_dataset_id(
                 dataset=dataset,
-                document_data=args,
+                knowledge_config=knowledge_config,
                 account=dataset.created_by_account,
-                dataset_process_rule=dataset.latest_process_rule if 'process_rule' not in args else None,
-                created_from='api'
+                dataset_process_rule=dataset.latest_process_rule if "process_rule" not in args else None,
+                created_from="api",
             )
         except ProviderTokenNotInitError as ex:
             raise ProviderNotInitializeError(ex.description)
         document = documents[0]
-        documents_and_batch_fields = {
-            'document': marshal(document, document_fields),
-            'batch': batch
-        }
+        documents_and_batch_fields = {"document": marshal(document, document_fields), "batch": document.batch}
         return documents_and_batch_fields, 200
 
 
@@ -284,13 +291,10 @@ class DocumentDeleteApi(DatasetApiResource):
         tenant_id = str(tenant_id)
 
         # get dataset info
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
 
         if not dataset:
-            raise ValueError('Dataset is not exist.')
+            raise ValueError("Dataset is not exist.")
 
         document = DocumentService.get_document(dataset.id, document_id)
 
@@ -306,44 +310,39 @@ class DocumentDeleteApi(DatasetApiResource):
             # delete document
             DocumentService.delete_document(document)
         except services.errors.document.DocumentIndexingError:
-            raise DocumentIndexingError('Cannot delete document during indexing.')
+            raise DocumentIndexingError("Cannot delete document during indexing.")
 
-        return {'result': 'success'}, 200
+        return {"result": "success"}, 200
 
 
 class DocumentListApi(DatasetApiResource):
     def get(self, tenant_id, dataset_id):
         dataset_id = str(dataset_id)
         tenant_id = str(tenant_id)
-        page = request.args.get('page', default=1, type=int)
-        limit = request.args.get('limit', default=20, type=int)
-        search = request.args.get('keyword', default=None, type=str)
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        page = request.args.get("page", default=1, type=int)
+        limit = request.args.get("limit", default=20, type=int)
+        search = request.args.get("keyword", default=None, type=str)
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
         if not dataset:
-            raise NotFound('Dataset not found.')
+            raise NotFound("Dataset not found.")
 
-        query = Document.query.filter_by(
-            dataset_id=str(dataset_id), tenant_id=tenant_id)
+        query = Document.query.filter_by(dataset_id=str(dataset_id), tenant_id=tenant_id)
 
         if search:
-            search = f'%{search}%'
+            search = f"%{search}%"
             query = query.filter(Document.name.like(search))
 
         query = query.order_by(desc(Document.created_at))
 
-        paginated_documents = query.paginate(
-            page=page, per_page=limit, max_per_page=100, error_out=False)
+        paginated_documents = query.paginate(page=page, per_page=limit, max_per_page=100, error_out=False)
         documents = paginated_documents.items
 
         response = {
-            'data': marshal(documents, document_fields),
-            'has_more': len(documents) == limit,
-            'limit': limit,
-            'total': paginated_documents.total,
-            'page': page
+            "data": marshal(documents, document_fields),
+            "has_more": len(documents) == limit,
+            "limit": limit,
+            "total": paginated_documents.total,
+            "page": page,
         }
 
         return response
@@ -355,38 +354,52 @@ class DocumentIndexingStatusApi(DatasetApiResource):
         batch = str(batch)
         tenant_id = str(tenant_id)
         # get dataset
-        dataset = db.session.query(Dataset).filter(
-            Dataset.tenant_id == tenant_id,
-            Dataset.id == dataset_id
-        ).first()
+        dataset = db.session.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
         if not dataset:
-            raise NotFound('Dataset not found.')
+            raise NotFound("Dataset not found.")
         # get documents
         documents = DocumentService.get_batch_documents(dataset_id, batch)
         if not documents:
-            raise NotFound('Documents not found.')
+            raise NotFound("Documents not found.")
         documents_status = []
         for document in documents:
-            completed_segments = DocumentSegment.query.filter(DocumentSegment.completed_at.isnot(None),
-                                                              DocumentSegment.document_id == str(document.id),
-                                                              DocumentSegment.status != 're_segment').count()
-            total_segments = DocumentSegment.query.filter(DocumentSegment.document_id == str(document.id),
-                                                          DocumentSegment.status != 're_segment').count()
+            completed_segments = DocumentSegment.query.filter(
+                DocumentSegment.completed_at.isnot(None),
+                DocumentSegment.document_id == str(document.id),
+                DocumentSegment.status != "re_segment",
+            ).count()
+            total_segments = DocumentSegment.query.filter(
+                DocumentSegment.document_id == str(document.id), DocumentSegment.status != "re_segment"
+            ).count()
             document.completed_segments = completed_segments
             document.total_segments = total_segments
             if document.is_paused:
-                document.indexing_status = 'paused'
+                document.indexing_status = "paused"
             documents_status.append(marshal(document, document_status_fields))
-        data = {
-            'data': documents_status
-        }
+        data = {"data": documents_status}
         return data
 
 
-api.add_resource(DocumentAddByTextApi, '/datasets/<uuid:dataset_id>/document/create_by_text')
-api.add_resource(DocumentAddByFileApi, '/datasets/<uuid:dataset_id>/document/create_by_file')
-api.add_resource(DocumentUpdateByTextApi, '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update_by_text')
-api.add_resource(DocumentUpdateByFileApi, '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update_by_file')
-api.add_resource(DocumentDeleteApi, '/datasets/<uuid:dataset_id>/documents/<uuid:document_id>')
-api.add_resource(DocumentListApi, '/datasets/<uuid:dataset_id>/documents')
-api.add_resource(DocumentIndexingStatusApi, '/datasets/<uuid:dataset_id>/documents/<string:batch>/indexing-status')
+api.add_resource(
+    DocumentAddByTextApi,
+    "/datasets/<uuid:dataset_id>/document/create_by_text",
+    "/datasets/<uuid:dataset_id>/document/create-by-text",
+)
+api.add_resource(
+    DocumentAddByFileApi,
+    "/datasets/<uuid:dataset_id>/document/create_by_file",
+    "/datasets/<uuid:dataset_id>/document/create-by-file",
+)
+api.add_resource(
+    DocumentUpdateByTextApi,
+    "/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update_by_text",
+    "/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update-by-text",
+)
+api.add_resource(
+    DocumentUpdateByFileApi,
+    "/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update_by_file",
+    "/datasets/<uuid:dataset_id>/documents/<uuid:document_id>/update-by-file",
+)
+api.add_resource(DocumentDeleteApi, "/datasets/<uuid:dataset_id>/documents/<uuid:document_id>")
+api.add_resource(DocumentListApi, "/datasets/<uuid:dataset_id>/documents")
+api.add_resource(DocumentIndexingStatusApi, "/datasets/<uuid:dataset_id>/documents/<string:batch>/indexing-status")

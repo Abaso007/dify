@@ -3,10 +3,10 @@ import type { FC } from 'react'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { RiCloseLine } from '@remixicon/react'
 import { Plan } from '../type'
 import SelectPlanRange, { PlanRange } from './select-plan-range'
 import PlanItem from './plan-item'
-import { XClose } from '@/app/components/base/icons/src/vender/line/general'
 import { useProviderContext } from '@/context/provider-context'
 import GridMask from '@/app/components/base/grid-mask'
 import { useAppContext } from '@/context/app-context'
@@ -20,8 +20,8 @@ const Pricing: FC<Props> = ({
 }) => {
   const { t } = useTranslation()
   const { plan } = useProviderContext()
-  const { isCurrentWorkspaceOwner } = useAppContext()
-  const canPay = isCurrentWorkspaceOwner
+  const { isCurrentWorkspaceManager } = useAppContext()
+  const canPay = isCurrentWorkspaceManager
   const [planRange, setPlanRange] = React.useState<PlanRange>(PlanRange.monthly)
 
   return createPortal(
@@ -71,7 +71,7 @@ const Pricing: FC<Props> = ({
         className='fixed top-6 right-6 flex items-center justify-center w-10 h-10 bg-black/[0.05] rounded-full backdrop-blur-[2px] cursor-pointer z-[1001]'
         onClick={onCancel}
       >
-        <XClose className='w-4 h-4 text-gray-900' />
+        <RiCloseLine className='w-4 h-4 text-gray-900' />
       </div>
     </div>,
     document.body,

@@ -9,6 +9,9 @@ type InputProps = {
   validated?: boolean
   className?: string
   disabled?: boolean
+  type?: string
+  min?: number
+  max?: number
 }
 const Input: FC<InputProps> = ({
   value,
@@ -18,11 +21,25 @@ const Input: FC<InputProps> = ({
   validated,
   className,
   disabled,
+  type = 'text',
+  min,
+  max,
 }) => {
+  const toLimit = (v: string) => {
+    const minNum = parseFloat(`${min}`)
+    const maxNum = parseFloat(`${max}`)
+    if (!isNaN(minNum) && parseFloat(v) < minNum) {
+      onChange(`${min}`)
+      return
+    }
+
+    if (!isNaN(maxNum) && parseFloat(v) > maxNum)
+      onChange(`${max}`)
+  }
   return (
     <div className='relative'>
       <input
-        tabIndex={-1}
+        tabIndex={0}
         className={`
           block px-3 w-full h-9 bg-gray-100 text-sm rounded-lg border border-transparent
           appearance-none outline-none caret-primary-600
@@ -34,9 +51,13 @@ const Input: FC<InputProps> = ({
         `}
         placeholder={placeholder || ''}
         onChange={e => onChange(e.target.value)}
+        onBlur={e => toLimit(e.target.value)}
         onFocus={onFocus}
-        value={value || ''}
+        value={value}
         disabled={disabled}
+        type={type}
+        min={min}
+        max={max}
       />
       {
         validated && (

@@ -3,15 +3,17 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import { useTranslation } from 'react-i18next'
 import {
+  RiAddLine,
+  RiArrowDownSLine,
+} from '@remixicon/react'
+import {
   PortalToFollowElem,
   PortalToFollowElemContent,
   PortalToFollowElemTrigger,
 } from '@/app/components/base/portal-to-follow-elem'
 import {
   ArrowUpRight,
-  ChevronDown,
 } from '@/app/components/base/icons/src/vender/line/arrows'
-import { Plus } from '@/app/components/base/icons/src/vender/line/general'
 import { useModalContext } from '@/context/modal-context'
 import { fetchApiBasedExtensionList } from '@/service/common'
 
@@ -58,19 +60,19 @@ const ApiBasedExtensionSelector: FC<ApiBasedExtensionSelectorProps> = ({
                   <div className='mr-1.5 w-[270px] text-xs text-gray-400 truncate text-right'>
                     {currentItem.api_endpoint}
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-gray-700 ${!open && 'opacity-60'}`} />
+                  <RiArrowDownSLine className={`w-4 h-4 text-gray-700 ${!open && 'opacity-60'}`} />
                 </div>
               </div>
             )
             : (
               <div className='flex items-center justify-between pl-3 pr-2.5 h-9 bg-gray-100 rounded-lg text-sm text-gray-400 cursor-pointer'>
                 {t('common.apiBasedExtension.selector.placeholder')}
-                <ChevronDown className={`w-4 h-4 text-gray-700 ${!open && 'opacity-60'}`} />
+                <RiArrowDownSLine className={`w-4 h-4 text-gray-700 ${!open && 'opacity-60'}`} />
               </div>
             )
         }
       </PortalToFollowElemTrigger>
-      <PortalToFollowElemContent className='w-[calc(100%-32px)] max-w-[576px] z-[11]'>
+      <PortalToFollowElemContent className='w-[calc(100%-32px)] max-w-[576px] z-[102]'>
         <div className='w-full rounded-lg border-[0.5px] border-gray-200 bg-white shadow-lg z-10'>
           <div className='p-1'>
             <div className='flex items-center justify-between px-3 pt-2 pb-1'>
@@ -79,7 +81,10 @@ const ApiBasedExtensionSelector: FC<ApiBasedExtensionSelectorProps> = ({
               </div>
               <div
                 className='flex items-center text-xs text-primary-600 cursor-pointer'
-                onClick={() => setShowAccountSettingModal({ payload: 'api-based-extension' })}
+                onClick={() => {
+                  setOpen(false)
+                  setShowAccountSettingModal({ payload: 'api-based-extension' })
+                }}
               >
                 {t('common.apiBasedExtension.selector.manage')}
                 <ArrowUpRight className='ml-0.5 w-3 h-3' />
@@ -104,9 +109,12 @@ const ApiBasedExtensionSelector: FC<ApiBasedExtensionSelectorProps> = ({
           <div className='p-1'>
             <div
               className='flex items-center px-3 h-8 text-sm text-primary-600 cursor-pointer'
-              onClick={() => setShowApiBasedExtensionModal({ payload: {}, onSaveCallback: () => mutate() })}
+              onClick={() => {
+                setOpen(false)
+                setShowApiBasedExtensionModal({ payload: {}, onSaveCallback: () => mutate() })
+              }}
             >
-              <Plus className='mr-2 w-4 h-4' />
+              <RiAddLine className='mr-2 w-4 h-4' />
               {t('common.operation.add')}
             </div>
           </div>
